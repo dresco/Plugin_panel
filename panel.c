@@ -85,20 +85,34 @@ static void ReadInputRegisters(bool block)
 
 static void WriteHoldingRegisters(bool block)
 {
-    float32_data_t x_pos, y_pos, z_pos;
-    uint16_t spindle_rpm = gc_state.spindle.rpm;
 
-    x_pos.value = sys.position[0] / settings.axis[0].steps_per_mm;
-    y_pos.value = sys.position[1] / settings.axis[1].steps_per_mm;
-    z_pos.value = sys.position[2] / settings.axis[2].steps_per_mm;
-#if N_AXIS > 3
-    float32_data_t a_pos;
-    a_pos.value = sys.position[3] / settings.axis[3].steps_per_mm;
-#endif
-#if N_AXIS > 4
-    float32_data_t b_pos;
-    b_pos.value = sys.position[4] / settings.axis[4].steps_per_mm;
-#endif
+    uint16_t spindle_rpm;
+    spindle_state_t sp_state = hal.spindle.get_state();
+
+    if(!hal.spindle.get_data) {
+        spindle_rpm = lroundf(sp_state.on ? sys.spindle_rpm : 0);
+    } else {
+        spindle_rpm = lroundf(hal.spindle.get_data(SpindleData_RPM)->rpm);
+    }
+
+    uint8_t spindle_override = sys.override.spindle_rpm;
+    uint8_t feed_override    = sys.override.feed_rate;
+    uint8_t rapid_override   = sys.override.rapid_rate;
+    uint8_t wcs = gc_state.modal.coord_system.id;
+
+    int32_t raw_position[N_AXIS];
+    float   machine_position[N_AXIS];
+    float32_data_t offset_position[N_AXIS];
+
+    memcpy(raw_position, sys.position, sizeof(sys.position));
+    system_convert_array_steps_to_mpos(machine_position, raw_position);
+
+    float wco[N_AXIS];
+    for (uint_fast8_t idx = 0; idx < N_AXIS; idx++) {
+        // Apply work coordinate offsets and tool length offset to current position.
+        wco[idx] = gc_get_offset(idx);
+        offset_position[idx].value = machine_position[idx] - wco[idx];
+    }
 
     modbus_message_t write_cmd = {
         .context = (void *)Panel_WriteHoldingRegisters,
@@ -117,20 +131,34 @@ static void WriteHoldingRegisters(bool block)
         .adu[11] = (spindle_rpm >> 8) & 0xFF,       // Register 102 - high byte
         .adu[12] = spindle_rpm & 0xFF,              // Register 102 - low byte
 
-        .adu[17] = x_pos.bytes[1],                  // Register 105 - x position
-        .adu[18] = x_pos.bytes[0],                  // Register 105 - x position
-        .adu[19] = x_pos.bytes[3],                  // Register 106 - x position
-        .adu[20] = x_pos.bytes[2],                  // Register 106 - x position
+#if SPINDLE_POWER
+        .adu[13] = (spindle_power >> 8) & 0xFF,     // Register 103 - high byte
+        .adu[14] = spindle_power & 0xFF,            // Register 103 - low byte
+#endif
 
-        .adu[21] = y_pos.bytes[1],                  // Register 107 - x position
-        .adu[22] = y_pos.bytes[0],                  // Register 107 - x position
-        .adu[23] = y_pos.bytes[3],                  // Register 108 - x position
-        .adu[24] = y_pos.bytes[2],                  // Register 108 - x position
+        .adu[15] = wcs,                             // Register 104 - high byte
+        .adu[16] = spindle_override,                // Register 104 - low byte
 
-        .adu[25] = z_pos.bytes[1],                  // Register 109 - x position
-        .adu[26] = z_pos.bytes[0],                  // Register 109 - x position
-        .adu[27] = z_pos.bytes[3],                  // Register 110 - x position
-        .adu[28] = z_pos.bytes[2],                  // Register 110 - x position
+        .adu[17] = rapid_override,                  // Register 105 - high byte
+        .adu[18] = feed_override,                   // Register 105 - low byte
+
+        .adu[19] = mpg_axis,                        // Register 106 - high byte
+        .adu[20] = jog_mode,                        // Register 106 - low byte
+
+        .adu[21] = offset_position[0].bytes[1],     // Register 107 - x position
+        .adu[22] = offset_position[0].bytes[0],     // Register 107 - x position
+        .adu[23] = offset_position[0].bytes[3],     // Register 108 - x position
+        .adu[24] = offset_position[0].bytes[2],     // Register 109 - x position
+
+        .adu[25] = offset_position[1].bytes[1],     // Register 109 - y position
+        .adu[26] = offset_position[1].bytes[0],     // Register 109 - y position
+        .adu[27] = offset_position[1].bytes[3],     // Register 110 - y position
+        .adu[28] = offset_position[1].bytes[2],     // Register 110 - y position
+
+        .adu[29] = offset_position[2].bytes[1],     // Register 111 - z position
+        .adu[30] = offset_position[2].bytes[0],     // Register 111 - z position
+        .adu[31] = offset_position[2].bytes[3],     // Register 112 - z position
+        .adu[32] = offset_position[2].bytes[2],     // Register 112 - z position
 
         .tx_length = (2*PANEL_WRITEREG_COUNT) + 9,  // number of registers written, plus 7 header bytes, plus 2 checksum bytes
         .rx_length = 8                              // fixed length ACK response?
@@ -506,7 +534,7 @@ static void panel_settings_changed (settings_t *settings)
     encoder_data[0].ticks_per_request = 4;
 
     encoder_data[1].function = feed_override;
-    encoder_data[1].ticks_per_request = 1;
+    encoder_data[1].ticks_per_request = 2;
 }
 
 void panel_update (sys_state_t state)

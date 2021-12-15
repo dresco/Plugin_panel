@@ -51,7 +51,7 @@
 #endif
 
 #ifndef PANEL_WRITEREG_COUNT
-#define PANEL_WRITEREG_COUNT 11
+#define PANEL_WRITEREG_COUNT 13
 #endif
 
 #define N_KEYPADS  5
