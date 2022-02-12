@@ -237,6 +237,7 @@ static void processKeypad(uint16_t keydata[])
     //
     // keydata_3
     // todo: add support for diagonal moves?
+    //       differentiate between mpg and keyboard jog modes?
     //
     if (keydata_3.value != last_keydata_3) {
         if (keydata_3.jog_step_x1)
@@ -287,7 +288,10 @@ static void processKeypad(uint16_t keydata[])
 
         if (jogRequested && !plan_check_full_buffer())
         {
-            switch (jog_mode) {
+            // force smooth jogging for test (ignore x1/x10/x100 mpg settings)
+            uint8_t keypad_jog_mode = jog_mode_smooth;
+
+            switch (keypad_jog_mode) {
 
                 case (jog_mode_x1):
                     strcat(command, ftoa(JOG_DISTANCE_X1, 3));
@@ -319,11 +323,11 @@ static void processKeypad(uint16_t keydata[])
 
             }
             // don't repeat jog commands if in single step mode
-            if ((jog_mode == jog_mode_smooth || !jogInProgress))
+            if ((keypad_jog_mode == jog_mode_smooth || !jogInProgress))
                 jogInProgress = grbl.enqueue_gcode((char *)command);
         }
         // cancel jog immediately key released if smooth jogging
-        if ((!jogRequested) && (jog_mode == jog_mode_smooth) && jogInProgress)
+        if ((!jogRequested) && (keypad_jog_mode == jog_mode_smooth) && jogInProgress)
         {
             grbl.enqueue_realtime_command(CMD_JOG_CANCEL);
             jogInProgress = false;
