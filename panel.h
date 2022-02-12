@@ -60,12 +60,14 @@
 #define JOG_DISTANCE_X1     0.01
 #define JOG_DISTANCE_X10    0.1
 #define JOG_DISTANCE_X100   1
-#define JOG_DISTANCE_SMOOTH 10
+#define JOG_DISTANCE_SMOOTH 2
 
 #define JOG_SPEED_X1        10
 #define JOG_SPEED_X10       100
 #define JOG_SPEED_X100      1000
-#define JOG_SPEED_SMOOTH    100
+#define JOG_SPEED_SMOOTH    1000
+
+#define JOG_SMOOTH_ACCEL    10
 
 typedef enum {
     Panel_Idle = 0,

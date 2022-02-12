@@ -174,6 +174,8 @@ static void processKeypad(uint16_t keydata[])
     char command[30] = "";
     bool jogRequested = false;
     static bool jogInProgress;
+    static uint8_t jogAccelCount = JOG_SMOOTH_ACCEL;
+    uint8_t keypad_jog_mode;
 
     panel_keydata_1_t keydata_1;
     panel_keydata_2_t keydata_2;
@@ -289,7 +291,7 @@ static void processKeypad(uint16_t keydata[])
         if (jogRequested && !plan_check_full_buffer())
         {
             // force smooth jogging for test (ignore x1/x10/x100 mpg settings)
-            uint8_t keypad_jog_mode = jog_mode_smooth;
+            keypad_jog_mode = jog_mode_smooth;
 
             switch (keypad_jog_mode) {
 
@@ -313,9 +315,13 @@ static void processKeypad(uint16_t keydata[])
 
                 // todo: add a smooth acceleration ramp for this one..?
                 case (jog_mode_smooth):
-                    strcat(command, ftoa(JOG_DISTANCE_X10, 3));
+                    strcat(command, ftoa(JOG_DISTANCE_SMOOTH, 3));
                     strcat(command, "F");
-                    strcat(command, ftoa(JOG_SPEED_X10, 0));
+                    strcat(command, ftoa(JOG_SPEED_SMOOTH / jogAccelCount, 0));
+
+                    if (jogAccelCount > 1)
+                        jogAccelCount--;
+
                     break;
 
                 default:
@@ -331,6 +337,7 @@ static void processKeypad(uint16_t keydata[])
         {
             grbl.enqueue_realtime_command(CMD_JOG_CANCEL);
             jogInProgress = false;
+            jogAccelCount = JOG_SMOOTH_ACCEL;
         }
 
         // set jogInProgress back to 0 at end of move in single-step
