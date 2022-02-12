@@ -486,6 +486,8 @@ static void rx_packet (modbus_message_t *msg)
             case Panel_ReadInputRegisters:
                 encoder_data[0].raw_value = (msg->adu[7] << 8)  | msg->adu[8];      // Register 102
                 encoder_data[1].raw_value = (msg->adu[9] << 8)  | msg->adu[10];     // Register 103
+                encoder_data[2].raw_value = (msg->adu[11] << 8)  | msg->adu[12];    // Register 104
+                encoder_data[3].raw_value = (msg->adu[13] << 8)  | msg->adu[14];    // Register 105
 
                 keydata[0] = (msg->adu[15] << 8) | msg->adu[16];                    // Register 106
                 keydata[2] = (msg->adu[19] << 8) | msg->adu[20];                    // Register 108
@@ -534,7 +536,13 @@ static void panel_settings_changed (settings_t *settings)
     encoder_data[0].ticks_per_request = 4;
 
     encoder_data[1].function = feed_override;
-    encoder_data[1].ticks_per_request = 2;
+    encoder_data[1].ticks_per_request = 4;
+
+    encoder_data[2].function = spindle_override;
+    encoder_data[2].ticks_per_request = 4;
+
+    encoder_data[3].function = rapid_override;
+    encoder_data[3].ticks_per_request = 4;
 }
 
 void panel_update (sys_state_t state)
