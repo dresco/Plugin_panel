@@ -51,6 +51,7 @@ static uint8_t mpg_axis = 0;
 static panel_jog_mode_t jog_mode = jog_mode_x10;
 
 static const char* axis[] = { "X", "Y", "Z", "A", "B" }; // do we need a 'null' axis to disable mpg control?
+static const char* wcs_strings[] = { "G54", "G55", "G56", "G57", "G58", "G59", "G59.1", "G59.2", "G59.3" };
 
 static panel_encoder_data_t encoder_data[N_ENCODERS] = { 0 };
 
@@ -189,10 +190,8 @@ static void processKeypad(uint16_t keydata[])
     keydata_4.value = keydata[3];
     keydata_5.value = keydata[4];
 
-    UNUSED(keydata_2);
     UNUSED(keydata_4);
     UNUSED(keydata_5);
-    UNUSED(last_keydata_2);
     UNUSED(last_keydata_4);
     UNUSED(last_keydata_5);
 
@@ -233,8 +232,69 @@ static void processKeypad(uint16_t keydata[])
             mpg_axis = 3;
         if (keydata_1.mpg_axis_b)
             mpg_axis = 4;
+
+        // function keys
+        if (keydata_1.function_f1)
+            ;
+        if (keydata_1.function_f2)
+            ;
+        if (keydata_1.function_f3)
+            ;
+        if (keydata_1.function_f4)
+            ;
     }
     last_keydata_1 = keydata_1.value;
+
+    //
+    // keydata_2
+    // set wcs, zero work offsets, move to zero
+    //
+    if (keydata_2.value != last_keydata_2) {
+        if (keydata_2.wcs_g54)
+            grbl.enqueue_gcode("G54");
+        if (keydata_2.wcs_g55)
+            grbl.enqueue_gcode("G55");
+        if (keydata_2.wcs_g56)
+            grbl.enqueue_gcode("G56");
+        if (keydata_2.wcs_g57)
+            grbl.enqueue_gcode("G57");
+
+        if (keydata_2.move_to_zero_x)
+            grbl.enqueue_gcode("G0 X0");
+        if (keydata_2.move_to_zero_y)
+            grbl.enqueue_gcode("G0 Y0");
+        if (keydata_2.move_to_zero_z)
+            grbl.enqueue_gcode("G0 Z0");
+        if (keydata_2.move_to_zero_a)
+            grbl.enqueue_gcode("G0 A0");
+
+        // need to know the current WCS in order to set
+        uint8_t wcs = gc_state.modal.coord_system.id;
+
+        if (keydata_2.zero_work_offset_x) {
+            strcpy(command, "G10 L20 ");
+            strcat(command, wcs_strings[wcs]);
+            strcat(command," X0");
+            grbl.enqueue_gcode(command);
+        } else if (keydata_2.zero_work_offset_y) {
+            strcpy(command, "G10 L20 ");
+            strcat(command, wcs_strings[wcs]);
+            strcat(command," Y0");
+            grbl.enqueue_gcode(command);
+        } else if (keydata_2.zero_work_offset_z) {
+            strcpy(command, "G10 L20 ");
+            strcat(command, wcs_strings[wcs]);
+            strcat(command," Z0");
+            grbl.enqueue_gcode(command);
+        } else if (keydata_2.zero_work_offset_a) {
+            strcpy(command, "G10 L20 ");
+            strcat(command, wcs_strings[wcs]);
+            strcat(command," A0");
+            grbl.enqueue_gcode(command);
+        }
+
+    }
+    last_keydata_2 = keydata_2.value;
 
     //
     // keydata_3
@@ -497,10 +557,11 @@ static void rx_packet (modbus_message_t *msg)
             case Panel_ReadInputRegisters:
                 encoder_data[0].raw_value = (msg->adu[7] << 8)  | msg->adu[8];      // Register 102
                 encoder_data[1].raw_value = (msg->adu[9] << 8)  | msg->adu[10];     // Register 103
-                encoder_data[2].raw_value = (msg->adu[11] << 8)  | msg->adu[12];    // Register 104
-                encoder_data[3].raw_value = (msg->adu[13] << 8)  | msg->adu[14];    // Register 105
+                encoder_data[2].raw_value = (msg->adu[11] << 8) | msg->adu[12];     // Register 104
+                encoder_data[3].raw_value = (msg->adu[13] << 8) | msg->adu[14];     // Register 105
 
                 keydata[0] = (msg->adu[15] << 8) | msg->adu[16];                    // Register 106
+                keydata[1] = (msg->adu[17] << 8) | msg->adu[18];                    // Register 107
                 keydata[2] = (msg->adu[19] << 8) | msg->adu[20];                    // Register 108
 
                 processKeypad(keydata);
