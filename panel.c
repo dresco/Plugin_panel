@@ -198,8 +198,13 @@ static void processKeypad(uint16_t keydata[])
     //
     // keydata_1
     // - key repeats not required
+    // - reset/stop/feed hold etc can be executed in any state
+    // - unlock only in locked state
+    // - home only in idle state
     //
     if (keydata_1.value != last_keydata_1) {
+
+        // realtime commands - can be processed in any state
         if (keydata_1.stop)
             grbl.enqueue_realtime_command(CMD_STOP);
 
@@ -212,16 +217,7 @@ static void processKeypad(uint16_t keydata[])
         if (keydata_1.reset)
             grbl.enqueue_realtime_command(CMD_RESET);
 
-        if (keydata_1.unlock) {
-            strcpy(command, "$X");
-            grbl.enqueue_gcode((char *)command);
-        }
-
-        if (keydata_1.home) {
-            strcpy(command, "$H");
-            grbl.enqueue_gcode((char *)command);
-        }
-
+        // change active mpg axis - can be processed in any state
         if (keydata_1.mpg_axis_x)
             mpg_axis = 0;
         if (keydata_1.mpg_axis_y)
@@ -233,7 +229,7 @@ static void processKeypad(uint16_t keydata[])
         if (keydata_1.mpg_axis_b)
             mpg_axis = 4;
 
-        // function keys
+        // function keys - may need to check state depending on assigned function
         if (keydata_1.function_f1)
             ;
         if (keydata_1.function_f2)
@@ -242,55 +238,77 @@ static void processKeypad(uint16_t keydata[])
             ;
         if (keydata_1.function_f4)
             ;
+
+        // unlock - only from alarm state
+        if (keydata_1.unlock) {
+            if (grbl_state == STATE_ALARM) {
+                strcpy(command, "$X");
+                grbl.enqueue_gcode((char *)command);
+            }
+        }
+
+        // home - only from idle state
+        if (keydata_1.home) {
+            if (grbl_state == STATE_IDLE) {
+                strcpy(command, "$H");
+                grbl.enqueue_gcode((char *)command);
+            }
+        }
+
     }
     last_keydata_1 = keydata_1.value;
 
     //
     // keydata_2
-    // set wcs, zero work offsets, move to zero
+    // - key repeats not required
+    // - set wcs, zero work offsets, move to zero - only from idle state
     //
     if (keydata_2.value != last_keydata_2) {
-        if (keydata_2.wcs_g54)
-            grbl.enqueue_gcode("G54");
-        if (keydata_2.wcs_g55)
-            grbl.enqueue_gcode("G55");
-        if (keydata_2.wcs_g56)
-            grbl.enqueue_gcode("G56");
-        if (keydata_2.wcs_g57)
-            grbl.enqueue_gcode("G57");
 
-        if (keydata_2.move_to_zero_x)
-            grbl.enqueue_gcode("G0 X0");
-        if (keydata_2.move_to_zero_y)
-            grbl.enqueue_gcode("G0 Y0");
-        if (keydata_2.move_to_zero_z)
-            grbl.enqueue_gcode("G0 Z0");
-        if (keydata_2.move_to_zero_a)
-            grbl.enqueue_gcode("G0 A0");
+        if (grbl_state == STATE_IDLE) {
 
-        // need to know the current WCS in order to set
-        uint8_t wcs = gc_state.modal.coord_system.id;
+            // need to know the current WCS in order to set
+            uint8_t wcs = gc_state.modal.coord_system.id;
 
-        if (keydata_2.zero_work_offset_x) {
-            strcpy(command, "G10 L20 ");
-            strcat(command, wcs_strings[wcs]);
-            strcat(command," X0");
-            grbl.enqueue_gcode(command);
-        } else if (keydata_2.zero_work_offset_y) {
-            strcpy(command, "G10 L20 ");
-            strcat(command, wcs_strings[wcs]);
-            strcat(command," Y0");
-            grbl.enqueue_gcode(command);
-        } else if (keydata_2.zero_work_offset_z) {
-            strcpy(command, "G10 L20 ");
-            strcat(command, wcs_strings[wcs]);
-            strcat(command," Z0");
-            grbl.enqueue_gcode(command);
-        } else if (keydata_2.zero_work_offset_a) {
-            strcpy(command, "G10 L20 ");
-            strcat(command, wcs_strings[wcs]);
-            strcat(command," A0");
-            grbl.enqueue_gcode(command);
+            if (keydata_2.wcs_g54)
+                grbl.enqueue_gcode("G54");
+            if (keydata_2.wcs_g55)
+                grbl.enqueue_gcode("G55");
+            if (keydata_2.wcs_g56)
+                grbl.enqueue_gcode("G56");
+            if (keydata_2.wcs_g57)
+                grbl.enqueue_gcode("G57");
+
+            if (keydata_2.move_to_zero_x)
+                grbl.enqueue_gcode("G0 X0");
+            if (keydata_2.move_to_zero_y)
+                grbl.enqueue_gcode("G0 Y0");
+            if (keydata_2.move_to_zero_z)
+                grbl.enqueue_gcode("G0 Z0");
+            if (keydata_2.move_to_zero_a)
+                grbl.enqueue_gcode("G0 A0");
+
+            if (keydata_2.zero_work_offset_x) {
+                strcpy(command, "G10 L20 ");
+                strcat(command, wcs_strings[wcs]);
+                strcat(command," X0");
+                grbl.enqueue_gcode(command);
+            } else if (keydata_2.zero_work_offset_y) {
+                strcpy(command, "G10 L20 ");
+                strcat(command, wcs_strings[wcs]);
+                strcat(command," Y0");
+                grbl.enqueue_gcode(command);
+            } else if (keydata_2.zero_work_offset_z) {
+                strcpy(command, "G10 L20 ");
+                strcat(command, wcs_strings[wcs]);
+                strcat(command," Z0");
+                grbl.enqueue_gcode(command);
+            } else if (keydata_2.zero_work_offset_a) {
+                strcpy(command, "G10 L20 ");
+                strcat(command, wcs_strings[wcs]);
+                strcat(command," A0");
+                grbl.enqueue_gcode(command);
+            }
         }
 
     }
@@ -298,9 +316,11 @@ static void processKeypad(uint16_t keydata[])
 
     //
     // keydata_3
-    // todo: add support for diagonal moves?
-    //       differentiate between mpg and keyboard jog modes?
+    // - update mpg jog mode from any state
+    // - jogging ony in jog or idle states
     //
+
+    // update mpg jog mode form any state
     if (keydata_3.value != last_keydata_3) {
         if (keydata_3.jog_step_x1)
             jog_mode = jog_mode_x1;
@@ -312,6 +332,7 @@ static void processKeypad(uint16_t keydata[])
             jog_mode = jog_mode_smooth;
     }
 
+    // only jog in idle or an existing jog state
     bool jogOkay = (grbl_state == STATE_IDLE || (grbl_state & STATE_JOG));
 
     if (jogOkay)
