@@ -190,9 +190,7 @@ static void processKeypad(uint16_t keydata[])
     keydata_4.value = keydata[3];
     keydata_5.value = keydata[4];
 
-    UNUSED(keydata_4);
     UNUSED(keydata_5);
-    UNUSED(last_keydata_4);
     UNUSED(last_keydata_5);
 
     //
@@ -320,7 +318,7 @@ static void processKeypad(uint16_t keydata[])
     // - jogging ony in jog or idle states
     //
 
-    // update mpg jog mode form any state
+    // update mpg jog mode from any state
     if (keydata_3.value != last_keydata_3) {
         if (keydata_3.jog_step_x1)
             jog_mode = jog_mode_x1;
@@ -427,6 +425,23 @@ static void processKeypad(uint16_t keydata[])
 
     }
     last_keydata_3 = keydata_3.value;
+
+    //
+    // keydata_4
+    // - key repeats not required
+    // - overrides & resets from any state
+    //
+    if (keydata_4.value != last_keydata_4) {
+        if (keydata_4.feed_override_reset)
+            grbl.enqueue_realtime_command(CMD_OVERRIDE_FEED_RESET);
+        if (keydata_4.spindle_override_reset)
+            grbl.enqueue_realtime_command(CMD_OVERRIDE_SPINDLE_RESET);
+        if (keydata_4.rapid_override_100)
+            grbl.enqueue_realtime_command(CMD_OVERRIDE_RAPID_RESET);
+
+    }
+    last_keydata_4 = keydata_4.value;
+
 }
 
 static void processEncoderOverride(uint8_t encoder_index)
@@ -445,6 +460,9 @@ static void processEncoderOverride(uint8_t encoder_index)
             cmd_override_plus  = CMD_OVERRIDE_FEED_FINE_PLUS;
             break;
 
+        case (rapid_override):
+            break;
+
         default:
             return;
 
@@ -461,16 +479,58 @@ static void processEncoderOverride(uint8_t encoder_index)
 
     if (signed_value) {
 
-        uint16_t count = abs(signed_value);
-        bool is_negative = false;
-        if (signed_value < 0)
-            is_negative = true;
+        if (encoder_data[encoder_index].function == rapid_override) {
 
-        for (uint16_t i = 0 ; i < count; i++) {
-            if (is_negative)
-                grbl.enqueue_realtime_command(cmd_override_minus);
-            else
-                grbl.enqueue_realtime_command(cmd_override_plus);
+            // rapid overrides are handled a bit differently, as only thee possible values..
+            if (signed_value < 0) {
+                switch (sys.override.rapid_rate) {
+
+                    case RAPID_OVERRIDE_LOW:
+                        break;
+
+                    case RAPID_OVERRIDE_MEDIUM:
+                        grbl.enqueue_realtime_command(CMD_OVERRIDE_RAPID_LOW);
+                        break;
+
+                    case DEFAULT_RAPID_OVERRIDE:
+                        grbl.enqueue_realtime_command(CMD_OVERRIDE_RAPID_MEDIUM);
+                        break;
+
+                    default:
+                        break;
+                }
+            } else {
+                switch (sys.override.rapid_rate) {
+
+                    case RAPID_OVERRIDE_LOW:
+                        grbl.enqueue_realtime_command(CMD_OVERRIDE_RAPID_MEDIUM);
+                        break;
+
+                    case RAPID_OVERRIDE_MEDIUM:
+                        grbl.enqueue_realtime_command(CMD_OVERRIDE_RAPID_RESET);
+                        break;
+
+                    case DEFAULT_RAPID_OVERRIDE:
+                        break;
+
+                    default:
+                        break;
+                }
+            }
+
+        } else {
+
+            uint16_t count = abs(signed_value);
+            bool is_negative = false;
+            if (signed_value < 0)
+                is_negative = true;
+
+            for (uint16_t i = 0 ; i < count; i++) {
+                if (is_negative)
+                    grbl.enqueue_realtime_command(cmd_override_minus);
+                else
+                    grbl.enqueue_realtime_command(cmd_override_plus);
+            }
         }
 
     }
@@ -556,6 +616,7 @@ static void processEncoders()
 
             case (feed_override):
             case (spindle_override):
+            case (rapid_override):
                 processEncoderOverride(i);
                 break;
 
@@ -584,6 +645,7 @@ static void rx_packet (modbus_message_t *msg)
                 keydata[0] = (msg->adu[15] << 8) | msg->adu[16];                    // Register 106
                 keydata[1] = (msg->adu[17] << 8) | msg->adu[18];                    // Register 107
                 keydata[2] = (msg->adu[19] << 8) | msg->adu[20];                    // Register 108
+                keydata[3] = (msg->adu[21] << 8) | msg->adu[22];                    // Register 109
 
                 processKeypad(keydata);
                 processEncoders();
