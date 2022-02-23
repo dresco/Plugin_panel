@@ -448,6 +448,7 @@ static void processEncoderOverride(uint8_t encoder_index)
 {
     int16_t signed_value;
     uint16_t cmd_override_minus, cmd_override_plus;
+    int8_t modulo;
 
     switch (encoder_data[encoder_index].function) {
         case (spindle_override):
@@ -470,6 +471,11 @@ static void processEncoderOverride(uint8_t encoder_index)
 
     signed_value = encoder_data[encoder_index].raw_value - encoder_data[encoder_index].last_raw_value;
     signed_value = signed_value / encoder_data[encoder_index].ticks_per_request;
+
+    modulo = encoder_data[encoder_index].raw_value % encoder_data[encoder_index].ticks_per_request;
+    if (modulo && signed_value < 0) {
+        modulo = (encoder_data[encoder_index].ticks_per_request - modulo) * -1;
+    }
 
     // don't do any overrides if not initialised, just store the initial reading
     if (!init_ok) {
@@ -533,9 +539,10 @@ static void processEncoderOverride(uint8_t encoder_index)
             }
         }
 
+        // update last value, only if changed by a full 'ticks per request'
+        // note stored value is adjusted for partial ticks
+        encoder_data[encoder_index].last_raw_value = encoder_data[encoder_index].raw_value - modulo;
     }
-
-    encoder_data[encoder_index].last_raw_value = encoder_data[encoder_index].raw_value;
 }
 
 static void processEncoderJog(uint8_t encoder_index, uint8_t jog_axis)
@@ -544,9 +551,15 @@ static void processEncoderJog(uint8_t encoder_index, uint8_t jog_axis)
     int16_t signed_value;
     char command[30] = "";
     bool jogOkay = (grbl_state == STATE_IDLE || (grbl_state & STATE_JOG));
+    int8_t modulo;
 
     signed_value = encoder_data[encoder_index].raw_value - encoder_data[encoder_index].last_raw_value;
     signed_value = signed_value / encoder_data[encoder_index].ticks_per_request;
+
+    modulo = encoder_data[encoder_index].raw_value % encoder_data[encoder_index].ticks_per_request;
+    if (modulo && signed_value < 0) {
+        modulo = (encoder_data[encoder_index].ticks_per_request - modulo) * -1;
+    }
 
     // don't jog if not initialised - just store the initial reading (so we can't pick up a big jump on startup)
     // don't jog if in smooth mode - is meant for keypad jogging only (large distances requested, and cancelled on key release)
@@ -586,8 +599,9 @@ static void processEncoderJog(uint8_t encoder_index, uint8_t jog_axis)
 
         if (!plan_check_full_buffer()) {
             if (grbl.enqueue_gcode((char *)command)) {
-                // update last value, only if command was accepted
-                encoder_data[encoder_index].last_raw_value = encoder_data[encoder_index].raw_value;
+                // update last value, only if changed by a full 'ticks per request', and only if jog command was accepted
+                // note stored value is adjusted for partial ticks
+                encoder_data[encoder_index].last_raw_value = encoder_data[encoder_index].raw_value - modulo;
             }
         }
     }
