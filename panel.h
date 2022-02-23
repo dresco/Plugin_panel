@@ -67,7 +67,7 @@
 #define JOG_SPEED_X100      1000
 #define JOG_SPEED_SMOOTH    1000
 
-#define JOG_SMOOTH_ACCEL    10
+#define JOG_SMOOTH_ACCEL    10.0
 
 typedef enum {
     Panel_Idle = 0,

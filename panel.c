@@ -175,7 +175,7 @@ static void processKeypad(uint16_t keydata[])
     char command[30] = "";
     bool jogRequested = false;
     static bool jogInProgress;
-    static uint8_t jogAccelCount = JOG_SMOOTH_ACCEL;
+    static float jogAccelCount = JOG_SMOOTH_ACCEL;
     uint8_t keypad_jog_mode;
 
     panel_keydata_1_t keydata_1;
@@ -394,7 +394,7 @@ static void processKeypad(uint16_t keydata[])
 
                 // todo: add a smooth acceleration ramp for this one..?
                 case (jog_mode_smooth):
-                    strcat(command, ftoa(JOG_DISTANCE_SMOOTH, 3));
+                    strcat(command, ftoa(JOG_DISTANCE_SMOOTH / jogAccelCount, 3));
                     strcat(command, "F");
                     strcat(command, ftoa(JOG_SPEED_SMOOTH / jogAccelCount, 0));
 
