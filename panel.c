@@ -175,7 +175,7 @@ static void processKeypad(uint16_t keydata[])
     char command[30] = "";
     bool jogRequested = false;
     static bool jogInProgress;
-    static float jogAccelCount = JOG_SMOOTH_ACCEL;
+    static uint8_t jogAccelCount = JOG_SMOOTH_ACCEL;
     uint8_t keypad_jog_mode;
 
     panel_keydata_1_t keydata_1;
@@ -238,6 +238,7 @@ static void processKeypad(uint16_t keydata[])
             ;
 
         // unlock - only from alarm state
+        // fixme: protocol_enqueue_gcode() doesn't accept input in alarm state
         if (keydata_1.unlock) {
             if (grbl_state == STATE_ALARM) {
                 strcpy(command, "$X");
@@ -392,15 +393,15 @@ static void processKeypad(uint16_t keydata[])
                     strcat(command, ftoa(JOG_SPEED_X100, 0));
                     break;
 
-                // todo: add a smooth acceleration ramp for this one..?
                 case (jog_mode_smooth):
-                    strcat(command, ftoa(JOG_DISTANCE_SMOOTH / jogAccelCount, 3));
-                    strcat(command, "F");
-                    strcat(command, ftoa(JOG_SPEED_SMOOTH / jogAccelCount, 0));
-
-                    if (jogAccelCount > 1)
+                    // Initial attempt at acceleration ramp for smooth keypad jogging..
+                    if (jogAccelCount)
                         jogAccelCount--;
+                    float jogAccel = (JOG_SMOOTH_ACCEL - jogAccelCount) / JOG_SMOOTH_ACCEL;
 
+                    strcat(command, ftoa(JOG_DISTANCE_SMOOTH * jogAccel, 3));
+                    strcat(command, "F");
+                    strcat(command, ftoa(JOG_SPEED_SMOOTH * jogAccel, 0));
                     break;
 
                 default:
