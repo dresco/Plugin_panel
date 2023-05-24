@@ -695,10 +695,10 @@ static void onReportOptions (bool newopt)
     }
 }
 
-static void panel_settings_changed (settings_t *settings)
+static void panel_settings_changed (settings_t *settings, settings_changed_flags_t changed)
 {
     if(settings_changed)
-        settings_changed(settings);
+        settings_changed(settings, changed);
 
     // todo: read settings from nvs, same for the #defines in panel.h
 
