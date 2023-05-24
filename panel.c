@@ -762,13 +762,13 @@ static void panel_settings_changed (settings_t *settings, settings_changed_flags
     encoder_data[0].function = jog_mpg;
     encoder_data[0].ticks_per_request = 4;
 
-    encoder_data[1].function = feed_override;
+    encoder_data[1].function = rapid_override;
     encoder_data[1].ticks_per_request = 4;
 
     encoder_data[2].function = spindle_override;
     encoder_data[2].ticks_per_request = 4;
 
-    encoder_data[3].function = rapid_override;
+    encoder_data[3].function = feed_override;
     encoder_data[3].ticks_per_request = 4;
 }
 

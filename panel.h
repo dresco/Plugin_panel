@@ -57,7 +57,7 @@
 #endif
 
 #define N_KEYPADS  5
-#define N_ENCODERS 4
+#define N_ENCODERS 8
 
 #define JOG_DISTANCE_X1     0.01
 #define JOG_DISTANCE_X10    0.1
@@ -85,11 +85,11 @@ typedef enum {
 } panel_jog_mode_t;
 
 typedef enum {
-    null             = 0,
+    unused           = 0,
     spindle_override = 1,
     feed_override    = 2,
     rapid_override   = 3,
-    jog_mpg          = 4,   // typical single encoder for jogging, axis selected seperately
+    jog_mpg          = 4,   // typical single encoder for jogging, axis selected at run time
     jog_x            = 5,   // dedicated per-axis encoders
     jog_y            = 6,
     jog_z            = 7,
