@@ -233,9 +233,11 @@ static void processKeypad(uint16_t keydata[])
     //
     // keydata_1
     // - key repeats not required
-    // - reset/stop/feed hold etc can be executed in any state
+    // - cycle start/feed hold/stop/reset can be executed in any state
     // - unlock only in locked state
     // - home only in idle state
+    // - spindle control only in idle state
+    // - single block toggle in idle/hold?
     //
     if (keydata_1.value != last_keydata_1) {
 
@@ -264,15 +266,24 @@ static void processKeypad(uint16_t keydata[])
         if (keydata_1.mpg_axis_b)
             mpg_axis = 4;
 
-        // function keys - may need to check state depending on assigned function
-        if (keydata_1.function_f1)
-            ;
-        if (keydata_1.function_f2)
-            ;
-        if (keydata_1.function_f3)
-            ;
-        if (keydata_1.function_f4)
-            ;
+        // spindle keys - only from idle state
+        // todo: add setting for requested speed
+        if (grbl_state == STATE_IDLE) {
+            if (keydata_1.spindle_off)
+                grbl.enqueue_gcode("M5");
+            if (keydata_1.spindle_cw)
+                grbl.enqueue_gcode("M3 S1000");
+            if (keydata_1.spindle_ccw)
+                grbl.enqueue_gcode("M4 S1000");
+        }
+
+        // single block toggle - process only in IDLE or HOLD state
+        // todo: think a bit more about what states this should be allowed in?
+        //       need to reflect the current state on the display..
+        if (keydata_1.single_block) {
+            if (grbl_state == STATE_IDLE || (grbl_state & STATE_HOLD))
+                grbl.enqueue_gcode("$S");
+        }
 
         // unlock - only from alarm state
         // note: protocol_enqueue_gcode() doesn't accept input in alarm state - use system_execute_line() instead
