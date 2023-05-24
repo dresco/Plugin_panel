@@ -53,7 +53,7 @@ static uint16_t grbl_state;
 static uint8_t mpg_axis = 0;
 static panel_jog_mode_t jog_mode = jog_mode_x10;
 
-static const char* axis[] = { "X", "Y", "Z", "A", "B" }; // do we need a 'null' axis to disable mpg control?
+static const char* axis[] = { "X", "Y", "Z", "A", "B", "C", "U", "V" }; // do we need a 'null' axis to disable mpg control?
 static const char* wcs_strings[] = { "G54", "G55", "G56", "G57", "G58", "G59", "G59.1", "G59.2", "G59.3" };
 
 static panel_encoder_data_t encoder_data[N_ENCODERS] = { 0 };
