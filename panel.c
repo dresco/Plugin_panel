@@ -213,7 +213,7 @@ static void processKeypad(uint16_t keydata[])
     bool jogRequested = false;
     static bool jogInProgress;
     static uint8_t jogAccelCount = JOG_SMOOTH_ACCEL;
-    uint8_t keypad_jog_mode;
+    uint8_t keypad_jog_mode = jog_mode_smooth;
 
     panel_keydata_1_t keydata_1;
     panel_keydata_2_t keydata_2;
@@ -368,6 +368,8 @@ static void processKeypad(uint16_t keydata[])
             jog_mode = jog_mode_smooth;
     }
 
+    // check for jogging key states even without change, as we want to keep jogging while pressed
+
     // only jog in idle or an existing jog state
     bool jogOkay = (grbl_state == STATE_IDLE || (grbl_state & STATE_JOG));
 
@@ -407,9 +409,7 @@ static void processKeypad(uint16_t keydata[])
 
         if (jogRequested && !plan_check_full_buffer())
         {
-            // force smooth jogging for test (ignore x1/x10/x100 mpg settings)
-            keypad_jog_mode = jog_mode_smooth;
-
+            // note: keypad jogging is currently always in smooth mode..
             switch (keypad_jog_mode) {
 
                 case (jog_mode_x1):
