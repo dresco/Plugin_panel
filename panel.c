@@ -203,7 +203,186 @@ static void rx_modbus_exception (uint8_t code, void *context)
 #endif // PANEL_ENABLE == 1
 
 #if PANEL_ENABLE == 2
+static dequeue_rx_ptr dequeue_rx;
+static canbus_message_t tx_message;
 
+bool panel_dequeue_rx (canbus_message_t message)
+{
+    // process inbound data here..
+    printf("panel_dequeue_rx(), CAN message id:%lx\n", message.id);
+
+    // fixme: don't try accessing array elements that may not be allocated, respect N_KEYDATAS / N_ENCODERS etc..
+
+    switch (message.id) {
+        case CANBUS_PANEL_KEYPAD_1:
+            keydata[0] = (message.data[0] << 8) | message.data[1];
+            keydata[1] = (message.data[2] << 8) | message.data[3];
+            keydata[2] = (message.data[4] << 8) | message.data[5];
+            keydata[3] = (message.data[6] << 8) | message.data[7];
+
+            processKeypad(keydata);
+            break;
+
+        case CANBUS_PANEL_KEYPAD_2:
+            keydata[4] = (message.data[0] << 8) | message.data[1];
+            keydata[5] = (message.data[2] << 8) | message.data[3];
+
+            processKeypad(keydata);
+            break;
+
+        case CANBUS_PANEL_ENCODER_1:
+            encoder_data[0].raw_value = (message.data[0] << 8) | message.data[1];
+            encoder_data[1].raw_value = (message.data[2] << 8) | message.data[3];
+            encoder_data[2].raw_value = (message.data[4] << 8) | message.data[5];
+            encoder_data[3].raw_value = (message.data[6] << 8) | message.data[7];
+
+            for (int i = 0; i < 4; i++) {
+                if (encoder_data[i].function != unused) {
+                    processEncoder(i);
+                }
+            }
+            break;
+
+        case CANBUS_PANEL_ENCODER_2:
+            encoder_data[4].raw_value = (message.data[0] << 8) | message.data[1];
+            encoder_data[5].raw_value = (message.data[2] << 8) | message.data[3];
+            encoder_data[6].raw_value = (message.data[4] << 8) | message.data[5];
+            encoder_data[7].raw_value = (message.data[6] << 8) | message.data[7];
+
+            for (int i = 4; i < 8; i++) {
+                if (encoder_data[i].function != unused) {
+                    processEncoder(i);
+                }
+            }
+            break;
+
+        default:
+            break;
+    }
+
+    /* Call the next rx handler in the chain */
+    if (dequeue_rx)
+        dequeue_rx(message);
+
+    return(0);
+}
+
+void WriteCANbusOutputs()
+{
+    panel_displaydata_t displaydata;
+
+    processDisplayData(&displaydata);
+
+    // State
+    memset(&tx_message, 0, sizeof(tx_message));
+    tx_message.id = CANBUS_PANEL_STATE_1;
+    tx_message.len = 8;
+    tx_message.data[0] = 0;
+    tx_message.data[1] = 0;
+    tx_message.data[2] = (displaydata.grbl_state >> 8) & 0xFF;     // high byte
+    tx_message.data[3] = displaydata.grbl_state & 0xFF;            // low byte
+    tx_message.data[4] = (displaydata.spindle_speed >> 8) & 0xFF;  // high byte
+    tx_message.data[5] = displaydata.spindle_speed & 0xFF;         // low byte
+    tx_message.data[6] = (displaydata.spindle_load >> 8) & 0xFF;   // high byte
+    tx_message.data[7] = displaydata.spindle_load & 0xFF;          // low byte
+    canbus_queue_tx(tx_message);
+
+    memset(&tx_message, 0, sizeof(tx_message));
+    tx_message.id = CANBUS_PANEL_STATE_2;
+    tx_message.len = 6;
+    tx_message.data[0] = displaydata.spindle_override;
+    tx_message.data[1] = displaydata.feed_override;
+    tx_message.data[2] = displaydata.rapid_override;
+    tx_message.data[3] = displaydata.wcs;
+    tx_message.data[4] = displaydata.mpg_mode;
+    tx_message.data[5] = displaydata.jog_mode;
+    canbus_queue_tx(tx_message);
+
+    // Machine position - up to 8 axis supported
+    memset(&tx_message, 0, sizeof(tx_message));
+    tx_message.id = CANBUS_PANEL_MPOS_1;
+    tx_message.len = 8;
+    tx_message.data[0] = (displaydata.position[0].bytes[1]);
+    tx_message.data[1] = (displaydata.position[0].bytes[0]);
+    tx_message.data[2] = (displaydata.position[0].bytes[3]);
+    tx_message.data[3] = (displaydata.position[0].bytes[2]);
+    tx_message.data[4] = (displaydata.position[1].bytes[1]);
+    tx_message.data[5] = (displaydata.position[1].bytes[0]);
+    tx_message.data[6] = (displaydata.position[1].bytes[3]);
+    tx_message.data[7] = (displaydata.position[1].bytes[2]);
+    canbus_queue_tx(tx_message);
+
+    memset(&tx_message, 0, sizeof(tx_message));
+    tx_message.id = CANBUS_PANEL_MPOS_2;
+    tx_message.len = 4;
+    tx_message.data[0] = (displaydata.position[2].bytes[1]);
+    tx_message.data[1] = (displaydata.position[2].bytes[0]);
+    tx_message.data[2] = (displaydata.position[2].bytes[3]);
+    tx_message.data[3] = (displaydata.position[2].bytes[2]);
+#if N_AXIS > 3
+    tx_message.len = 8;
+    tx_message.data[4] = (displaydata.position[3].bytes[1]);
+    tx_message.data[5] = (displaydata.position[3].bytes[0]);
+    tx_message.data[6] = (displaydata.position[3].bytes[3]);
+    tx_message.data[7] = (displaydata.position[3].bytes[2]);
+#endif
+    canbus_queue_tx(tx_message);
+
+#if N_AXIS > 4
+    memset(&tx_message, 0, sizeof(tx_message));
+    tx_message.id = CANBUS_PANEL_MPOS_3;
+    tx_message.len = 4;
+    tx_message.data[0] = (displaydata.position[4].bytes[1]);
+    tx_message.data[1] = (displaydata.position[4].bytes[0]);
+    tx_message.data[2] = (displaydata.position[4].bytes[3]);
+    tx_message.data[3] = (displaydata.position[4].bytes[2]);
+#if N_AXIS > 5
+    tx_message.len = 8;
+    tx_message.data[4] = (displaydata.position[5].bytes[1]);
+    tx_message.data[5] = (displaydata.position[5].bytes[0]);
+    tx_message.data[6] = (displaydata.position[5].bytes[3]);
+    tx_message.data[7] = (displaydata.position[5].bytes[2]);
+#endif
+    canbus_queue_tx(tx_message);
+#endif
+
+#if N_AXIS > 4
+    memset(&tx_message, 0, sizeof(tx_message));
+    tx_message.id = CANBUS_PANEL_MPOS_4;
+    tx_message.len = 4;
+    tx_message.data[0] = (displaydata.position[4].bytes[1]);
+    tx_message.data[1] = (displaydata.position[4].bytes[0]);
+    tx_message.data[2] = (displaydata.position[4].bytes[3]);
+    tx_message.data[3] = (displaydata.position[4].bytes[2]);
+#if N_AXIS > 5
+    tx_message.len = 8;
+    tx_message.data[4] = (displaydata.position[5].bytes[1]);
+    tx_message.data[5] = (displaydata.position[5].bytes[0]);
+    tx_message.data[6] = (displaydata.position[5].bytes[3]);
+    tx_message.data[7] = (displaydata.position[5].bytes[2]);
+#endif
+    canbus_queue_tx(tx_message);
+#endif
+
+#if N_AXIS > 6
+    memset(&tx_message, 0, sizeof(tx_message));
+    tx_message.id = CANBUS_PANEL_MPOS_5;
+    tx_message.len = 4;
+    tx_message.data[0] = (displaydata.position[6].bytes[1]);
+    tx_message.data[1] = (displaydata.position[6].bytes[0]);
+    tx_message.data[2] = (displaydata.position[6].bytes[3]);
+    tx_message.data[3] = (displaydata.position[6].bytes[2]);
+#if N_AXIS > 7
+    tx_message.len = 8;
+    tx_message.data[4] = (displaydata.position[7].bytes[1]);
+    tx_message.data[5] = (displaydata.position[7].bytes[0]);
+    tx_message.data[6] = (displaydata.position[7].bytes[3]);
+    tx_message.data[7] = (displaydata.position[7].bytes[2]);
+#endif
+    canbus_queue_tx(tx_message);
+#endif
+
+}
 #endif // PANEL_ENABLE == 2
 
 static void processDisplayData(panel_displaydata_t *displaydata)
