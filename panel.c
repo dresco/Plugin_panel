@@ -700,7 +700,7 @@ static void processEncoder(int index)
 
 static void rx_packet (modbus_message_t *msg)
 {
-    uint16_t keydata[N_KEYPADS];
+    uint16_t keydata[N_KEYDATAS];
 
     if(!(msg->adu[0] & 0x80)) {
 

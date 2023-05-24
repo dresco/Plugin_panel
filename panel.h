@@ -56,7 +56,7 @@
 #define PANEL_WRITEREG_COUNT 13
 #endif
 
-#define N_KEYPADS  5
+#define N_KEYDATAS 6
 #define N_ENCODERS 8
 
 #define JOG_DISTANCE_X1     0.01

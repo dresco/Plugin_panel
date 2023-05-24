@@ -114,4 +114,9 @@ typedef union {
     };
 } panel_keydata_5_t;
 
-
+typedef union {
+    uint16_t value;
+    struct {
+        uint16_t unused                 :16;
+    };
+} panel_keydata_6_t;
