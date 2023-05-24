@@ -6,11 +6,11 @@ Keypad_1 | 2  | Cycle start
 Keypad_1 | 3  | Reset
 Keypad_1 | 4  | Unlock
 Keypad_1 | 5  | Home
-Keypad_1 | 6  | -
-Keypad_1 | 7  | F1
-Keypad_1 | 8  | F2
-Keypad_1 | 9  | F3
-Keypad_1 | 10 | F4
+Keypad_1 | 6  | Single block toggle
+Keypad_1 | 7  | Spindle Off
+Keypad_1 | 8  | Spindle CW
+Keypad_1 | 9  | Spindle CCW
+Keypad_1 | 10 | -
 Keypad_1 | 11 | MPG jog axis select - X
 Keypad_1 | 12 | MPG jog axis select - Y
 Keypad_1 | 13 | MPG jog axis select - Z
@@ -92,4 +92,23 @@ Keypad_5 | 12 | -
 Keypad_5 | 13 | -
 Keypad_5 | 14 | -
 Keypad_5 | 15 | -
+
+Register | Bit | Function
+--|--|--
+Keypad_6 | 0  | -
+Keypad_6 | 1  | -
+Keypad_6 | 2  | -
+Keypad_6 | 3  | -
+Keypad_6 | 4  | -
+Keypad_6 | 5  | -
+Keypad_6 | 6  | -
+Keypad_6 | 7  | -
+Keypad_6 | 8  | -
+Keypad_6 | 9  | -
+Keypad_6 | 10 | -
+Keypad_6 | 11 | -
+Keypad_6 | 12 | -
+Keypad_6 | 13 | -
+Keypad_6 | 14 | -
+Keypad_6 | 15 | -
 

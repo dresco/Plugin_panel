@@ -139,7 +139,7 @@ static void WriteModbusHoldingRegisters(bool block)
         .adu[21] = displaydata.position[0].bytes[1],            // Register 107 - x position
         .adu[22] = displaydata.position[0].bytes[0],            // Register 107 - x position
         .adu[23] = displaydata.position[0].bytes[3],            // Register 108 - x position
-        .adu[24] = displaydata.position[0].bytes[2],            // Register 109 - x position
+        .adu[24] = displaydata.position[0].bytes[2],            // Register 108 - x position
 
         .adu[25] = displaydata.position[1].bytes[1],            // Register 109 - y position
         .adu[26] = displaydata.position[1].bytes[0],            // Register 109 - y position
@@ -950,7 +950,7 @@ static void onReportOptions (bool newopt)
     on_report_options(newopt);
 
     if(!newopt) {
-        hal.stream.write("[PLUGIN:PANEL v0.01]" ASCII_EOL);
+        hal.stream.write("[PLUGIN:PANEL v0.02]" ASCII_EOL);
     }
 }
 
