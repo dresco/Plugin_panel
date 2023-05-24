@@ -32,6 +32,8 @@
 #endif
 
 #include "spindle/modbus.h"
+#include "spindle/vfd/spindle.h"
+
 #include "registers.h"
 
 #ifndef PANEL_UPDATE_INTERVAL
