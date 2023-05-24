@@ -86,17 +86,29 @@ static void ReadInputRegisters(bool block)
 
 static void WriteHoldingRegisters(bool block)
 {
+    static uint16_t spindle_rpm;
 
-    uint16_t spindle_rpm;
-    spindle_state_t sp_state = hal.spindle.get_state();
+    spindle_ptrs_t *spindle_0;
+    spindle_state_t spindle_0_state;
 
-    if(!hal.spindle.get_data) {
-        spindle_rpm = lroundf(sp_state.on ? sys.spindle_rpm : 0);
+    spindle_0 = spindle_get(0);
+    spindle_0_state = spindle_0->get_state();
+
+    if(!spindle_0->get_data) {
+        spindle_rpm = lroundf(spindle_0_state.on ? spindle_0->param->rpm_overridden : 0);
     } else {
-        spindle_rpm = lroundf(hal.spindle.get_data(SpindleData_RPM)->rpm);
+        spindle_rpm = lroundf(spindle_0->get_data(SpindleData_RPM)->rpm);
     }
 
-    uint8_t spindle_override = sys.override.spindle_rpm;
+#if VFD_ENABLE
+    uint16_t spindle_power = 0;
+    const vfd_ptrs_t *vfd_spindle = vfd_get_active();
+    if (vfd_spindle && vfd_spindle->get_load) {
+        spindle_power = lroundf(vfd_spindle->get_load());
+    }
+#endif
+
+    uint8_t spindle_override = spindle_0->param->override_pct;
     uint8_t feed_override    = sys.override.feed_rate;
     uint8_t rapid_override   = sys.override.rapid_rate;
     uint8_t wcs = gc_state.modal.coord_system.id;
@@ -132,7 +144,7 @@ static void WriteHoldingRegisters(bool block)
         .adu[11] = (spindle_rpm >> 8) & 0xFF,       // Register 102 - high byte
         .adu[12] = spindle_rpm & 0xFF,              // Register 102 - low byte
 
-#if SPINDLE_POWER
+#if VFD_ENABLE
         .adu[13] = (spindle_power >> 8) & 0xFF,     // Register 103 - high byte
         .adu[14] = spindle_power & 0xFF,            // Register 103 - low byte
 #endif
