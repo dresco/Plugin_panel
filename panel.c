@@ -40,6 +40,14 @@
 #include "grbl/report.h"
 #endif
 
+#if PANEL_ENABLE == 1 && !(MODBUS_ENABLE)
+#error "This Control panel configuration requires the Modbus plugin to be enabled!"
+#endif
+
+#if PANEL_ENABLE == 2 && !(CANBUS_ENABLE)
+#error "This Control panel configuration requires the CAN bus plugin to be enabled!"
+#endif
+
 static settings_changed_ptr settings_changed;
 static on_report_options_ptr on_report_options;
 static on_execute_realtime_ptr on_execute_realtime;
@@ -56,19 +64,21 @@ static panel_jog_mode_t jog_mode = jog_mode_x10;
 static const char* axis[] = { "X", "Y", "Z", "A", "B", "C", "U", "V" }; // do we need a 'null' axis to disable mpg control?
 static const char* wcs_strings[] = { "G54", "G55", "G56", "G57", "G58", "G59", "G59.1", "G59.2", "G59.3" };
 
+static uint16_t keydata[N_KEYDATAS] = { 0 };
 static panel_encoder_data_t encoder_data[N_ENCODERS] = { 0 };
 
 static char sys_cmd_buffer[LINE_BUFFER_SIZE];
 
-static void rx_packet (modbus_message_t *msg);
-static void rx_exception (uint8_t code, void *context);
+#if PANEL_ENABLE == 1
+static void rx_modbus_packet (modbus_message_t *msg);
+static void rx_modbus_exception (uint8_t code, void *context);
 
-static const modbus_callbacks_t callbacks = {
-    .on_rx_packet = rx_packet,
-    .on_rx_exception = rx_exception
+static const modbus_callbacks_t modbus_callbacks = {
+    .on_rx_packet = rx_modbus_packet,
+    .on_rx_exception = rx_modbus_exception
 };
 
-static void ReadInputRegisters(bool block)
+static void ReadModbusInputRegisters(bool block)
 {
     modbus_message_t read_cmd = {
         .context = (void *)Panel_ReadInputRegisters,
@@ -86,10 +96,10 @@ static void ReadInputRegisters(bool block)
          // note: rx_length & tx_length must be less than or equal to MODBUS_MAX_ADU_SIZE
     };
 
-    modbus_send(&read_cmd, &callbacks, block);
+    modbus_send(&read_cmd, &modbus_callbacks, block);
 }
 
-static void WriteHoldingRegisters(bool block)
+static void WriteModbusHoldingRegisters(bool block)
 {
     static panel_displaydata_t displaydata;
 
@@ -146,8 +156,55 @@ static void WriteHoldingRegisters(bool block)
         // note: rx_length & tx_length must be less than or equal to MODBUS_MAX_ADU_SIZE
     };
 
-    modbus_send(&write_cmd, &callbacks, block);
+    modbus_send(&write_cmd, &modbus_callbacks, block);
 }
+
+static void rx_modbus_packet (modbus_message_t *msg)
+{
+    if(!(msg->adu[0] & 0x80)) {
+
+        switch((panel_modbus_response_t)msg->context) {
+
+            case Panel_ReadInputRegisters:
+                encoder_data[0].raw_value = (msg->adu[7] << 8)  | msg->adu[8];      // Register 102
+                encoder_data[1].raw_value = (msg->adu[9] << 8)  | msg->adu[10];     // Register 103
+                encoder_data[2].raw_value = (msg->adu[11] << 8) | msg->adu[12];     // Register 104
+                encoder_data[3].raw_value = (msg->adu[13] << 8) | msg->adu[14];     // Register 105
+
+                keydata[0] = (msg->adu[15] << 8) | msg->adu[16];                    // Register 106
+                keydata[1] = (msg->adu[17] << 8) | msg->adu[18];                    // Register 107
+                keydata[2] = (msg->adu[19] << 8) | msg->adu[20];                    // Register 108
+                keydata[3] = (msg->adu[21] << 8) | msg->adu[22];                    // Register 109
+
+                processKeypad(keydata);
+
+                for (int i = 0; i < N_ENCODERS; i++) {
+                    processEncoder(i);
+                    // after first pass through, have populated the initial encoder values..
+                    encoder_data[i].init_ok = true;
+                }
+                break;
+
+            case Panel_WriteHoldingRegisters:
+                break;
+
+            default:
+                break;
+        }
+    }
+
+}
+
+static void rx_modbus_exception (uint8_t code, void *context)
+{
+    // todo: need a 'Panel' alarm status
+    system_raise_alarm(Alarm_None);
+}
+#endif // PANEL_ENABLE == 1
+
+#if PANEL_ENABLE == 2
+
+#endif // PANEL_ENABLE == 2
 
 static void processDisplayData(panel_displaydata_t *displaydata)
 {
@@ -709,51 +766,6 @@ static void processEncoder(int index)
     encoder_data[index].init_ok = true;
 }
 
-static void rx_packet (modbus_message_t *msg)
-{
-    uint16_t keydata[N_KEYDATAS];
-
-    if(!(msg->adu[0] & 0x80)) {
-
-        switch((panel_response_t)msg->context) {
-
-            case Panel_ReadInputRegisters:
-                encoder_data[0].raw_value = (msg->adu[7] << 8)  | msg->adu[8];      // Register 102
-                encoder_data[1].raw_value = (msg->adu[9] << 8)  | msg->adu[10];     // Register 103
-                encoder_data[2].raw_value = (msg->adu[11] << 8) | msg->adu[12];     // Register 104
-                encoder_data[3].raw_value = (msg->adu[13] << 8) | msg->adu[14];     // Register 105
-
-                keydata[0] = (msg->adu[15] << 8) | msg->adu[16];                    // Register 106
-                keydata[1] = (msg->adu[17] << 8) | msg->adu[18];                    // Register 107
-                keydata[2] = (msg->adu[19] << 8) | msg->adu[20];                    // Register 108
-                keydata[3] = (msg->adu[21] << 8) | msg->adu[22];                    // Register 109
-
-                processKeypad(keydata);
-
-                for (int i = 0; i < N_ENCODERS; i++) {
-                    processEncoder(i);
-                    // after first pass through, have populated the initial encoder values..
-                    encoder_data[i].init_ok = true;
-                }
-
-                break;
-
-            case Panel_WriteHoldingRegisters:
-                break;
-
-            default:
-                break;
-        }
-    }
-
-}
-
-static void rx_exception (uint8_t code, void *context)
-{
-    // todo: need a 'Panel' alarm status
-    system_raise_alarm(Alarm_None);
-}
-
 static void onReportOptions (bool newopt)
 {
     on_report_options(newopt);
@@ -783,6 +795,29 @@ static void panel_settings_changed (settings_t *settings, settings_changed_flags
     encoder_data[3].ticks_per_request = 4;
 }
 
+void ReadPanelInputs(void)
+{
+#if PANEL_ENABLE == 1
+    ReadModbusInputRegisters(false);      // do not block for modbus response
+#endif
+
+#if PANEL_ENABLE == 2
+    // Process inputs from CAN bus plugin
+#endif
+}
+
+void WritePanelOutputs(void)
+{
+#if PANEL_ENABLE == 1
+    WriteModbusHoldingRegisters(false);   // do not block for modbus response
+#endif
+
+#if PANEL_ENABLE == 2
+    // Send outputs to CAN bus plugin
+    WriteCANbusOutputs();
+#endif
+}
+
 void panel_update (sys_state_t state)
 {
     static uint32_t last_ms;
@@ -798,19 +833,40 @@ void panel_update (sys_state_t state)
     if(ms == last_ms) // Don't check more than once every ms
         return;
 
-    // Initiate Modbus requests to the panel every PANEL_UPDATE_INTERVAL ms
-    // alternating inputs (buttons/encoders) and outputs (display)
+    // Initiate requests to the panel every PANEL_UPDATE_INTERVAL ms, alternating inputs (buttons/encoders) and outputs (display)
+    //
+    // CAN bus - not using remote frames (request/response), so they will just be processed as received? (callback from canbus plugin)
+    //
+    // Need to consider the flow, modbus code expects to receive all data at once, and then process all...
+    // what about overwriting values etc.. can we just process each message individually?
+    //
+    //
     if (!(ms % PANEL_UPDATE_INTERVAL) )
     {
         if (!write)
-            ReadInputRegisters(false);      // do not block for modbus response
+            ReadPanelInputs();
         else
-            WriteHoldingRegisters(false);   // do not block for modbus response
+            WritePanelOutputs();
 
         write = !write;
     }
 
     last_ms = ms;
+}
+
+int plugins_enabled(void)
+{
+    int res = false;
+
+#if MODBUS_ENABLE
+    res = modbus_enabled();
+#endif
+
+#if CANBUS_ENABLE
+    res = canbus_enabled();
+#endif
+
+    return res;
 }
 
 static void cancel_jog (sys_state_t state)
@@ -819,7 +875,7 @@ static void cancel_jog (sys_state_t state)
 
 void panel_init()
 {
-    if(modbus_enabled()) {
+    if(plugins_enabled()) {
         settings_changed = hal.settings_changed;
         hal.settings_changed = panel_settings_changed;
 
@@ -830,6 +886,11 @@ void panel_init()
         grbl.on_execute_realtime = panel_update;
 
         grbl.on_jog_cancel = cancel_jog;
+
+#if PANEL_ENABLE == 2
+        dequeue_rx = canbus.dequeue_rx;
+        canbus.dequeue_rx = panel_dequeue_rx;
+#endif
     }
 }
 #endif

@@ -1,10 +1,10 @@
 /*
 
-  registers.h - Modbus register definitions for control panel support
+  keypad_bitfields.h - Keypad bitfield definitions for control panel support
 
   Part of grblHAL
 
-  Copyright (c) 2021 Jon Escombe
+  Copyright (c) 2021-2023 Jon Escombe
 
   Grbl is free software: you can redistribute it and/or modify
   it under the terms of the GNU General Public License as published by

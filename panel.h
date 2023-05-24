@@ -31,10 +31,15 @@
 #include "driver.h"
 #endif
 
+#ifdef CANBUS_ENABLE
+#include "canbus/canbus.h"
+#endif
+
 #include "spindle/modbus.h"
 #include "spindle/vfd/spindle.h"
 
-#include "registers.h"
+#include "keypad_bitfields.h"
+#include "canbus_ids.h"
 
 #ifndef PANEL_UPDATE_INTERVAL
 #define PANEL_UPDATE_INTERVAL 50
@@ -75,7 +80,7 @@ typedef enum {
     Panel_Idle = 0,
     Panel_ReadInputRegisters,
     Panel_WriteHoldingRegisters
-} panel_response_t;
+} panel_modbus_response_t;
 
 typedef enum {
     jog_mode_x1 = 1,
