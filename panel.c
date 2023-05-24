@@ -56,7 +56,7 @@ static const char* wcs_strings[] = { "G54", "G55", "G56", "G57", "G58", "G59", "
 static panel_encoder_data_t encoder_data[N_ENCODERS] = { 0 };
 
 static void rx_packet (modbus_message_t *msg);
-static void rx_exception (uint8_t code);
+static void rx_exception (uint8_t code, void *context);
 
 static const modbus_callbacks_t callbacks = {
     .on_rx_packet = rx_packet,
@@ -692,7 +692,7 @@ static void rx_packet (modbus_message_t *msg)
 
 }
 
-static void rx_exception (uint8_t code)
+static void rx_exception (uint8_t code, void *context)
 {
     // todo: need a 'Panel' alarm status
     system_raise_alarm(Alarm_None);
