@@ -22,9 +22,9 @@
 
 */
 
-#if PANEL_ENABLE
-
 #include "panel.h"
+
+#if PANEL_ENABLE
 
 #include <math.h>
 #include <string.h>
