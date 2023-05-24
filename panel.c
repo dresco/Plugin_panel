@@ -420,6 +420,8 @@ static void processDisplayData(panel_displaydata_t *displaydata)
         displaydata->spindle_override = spindle_0->param->override_pct;
     }
 
+    displaydata->grbl_state = grbl_state;
+
     displaydata->wcs = gc_state.modal.coord_system.id;
 
     displaydata->mpg_mode = mpg_axis;
