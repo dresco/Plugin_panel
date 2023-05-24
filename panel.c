@@ -46,6 +46,7 @@ static on_execute_realtime_ptr on_execute_realtime;
 
 static void processKeypad(uint16_t[]);
 static void processEncoder(int);
+static void processDisplayData(panel_displaydata_t *);
 
 // Globals
 static uint16_t grbl_state;
@@ -90,36 +91,109 @@ static void ReadInputRegisters(bool block)
 
 static void WriteHoldingRegisters(bool block)
 {
-    static uint16_t spindle_rpm;
+    static panel_displaydata_t displaydata;
 
-    spindle_ptrs_t *spindle_0;
-    spindle_state_t spindle_0_state;
+    processDisplayData(&displaydata);
 
-    spindle_0 = spindle_get(0);
-    spindle_0_state = spindle_0->get_state();
+    modbus_message_t write_cmd = {
+        .context = (void *)Panel_WriteHoldingRegisters,
+        .crc_check = true,
+        .adu[0] = PANEL_ADDRESS,
+        .adu[1] = ModBus_WriteRegisters,
+        .adu[2] = 0x00,                                         // Start address - high byte
+        .adu[3] = PANEL_START_REF,                              // Start address - low byte - 100 (0x64)
+        .adu[4] = 0x00,                                         // No of 16bit registers - high byte
+        .adu[5] = PANEL_WRITEREG_COUNT,                         // No of 16bit registers - low byte
+        .adu[6] = PANEL_WRITEREG_COUNT*2,                       // Number of bytes
 
-    if(!spindle_0->get_data) {
-        spindle_rpm = lroundf(spindle_0_state.on ? spindle_0->param->rpm_overridden : 0);
-    } else {
-        spindle_rpm = lroundf(spindle_0->get_data(SpindleData_RPM)->rpm);
-    }
+        .adu[7] = (displaydata.grbl_state >> 8) & 0xFF,         // Register 100 - high byte
+        .adu[8] = displaydata.grbl_state & 0xFF,                // Register 100 - low byte
+
+        .adu[11] = (displaydata.spindle_speed >> 8) & 0xFF,     // Register 102 - high byte
+        .adu[12] = displaydata.spindle_speed & 0xFF,            // Register 102 - low byte
 
 #if VFD_ENABLE
-    uint16_t spindle_power = 0;
-    const vfd_ptrs_t *vfd_spindle = vfd_get_active();
-    if (vfd_spindle && vfd_spindle->get_load) {
-        spindle_power = lroundf(vfd_spindle->get_load());
-    }
+        .adu[13] = (displaydata.spindle_load >> 8) & 0xFF,      // Register 103 - high byte
+        .adu[14] = displaydata.spindle_load & 0xFF,             // Register 103 - low byte
 #endif
 
-    uint8_t spindle_override = spindle_0->param->override_pct;
-    uint8_t feed_override    = sys.override.feed_rate;
-    uint8_t rapid_override   = sys.override.rapid_rate;
-    uint8_t wcs = gc_state.modal.coord_system.id;
+        .adu[15] = displaydata.wcs,                             // Register 104 - high byte
+        .adu[16] = displaydata.spindle_override,                // Register 104 - low byte
+
+        .adu[17] = displaydata.rapid_override,                  // Register 105 - high byte
+        .adu[18] = displaydata.feed_override,                   // Register 105 - low byte
+
+        .adu[19] = displaydata.mpg_mode,                        // Register 106 - high byte
+        .adu[20] = displaydata.jog_mode,                        // Register 106 - low byte
+
+        .adu[21] = displaydata.position[0].bytes[1],            // Register 107 - x position
+        .adu[22] = displaydata.position[0].bytes[0],            // Register 107 - x position
+        .adu[23] = displaydata.position[0].bytes[3],            // Register 108 - x position
+        .adu[24] = displaydata.position[0].bytes[2],            // Register 109 - x position
+
+        .adu[25] = displaydata.position[1].bytes[1],            // Register 109 - y position
+        .adu[26] = displaydata.position[1].bytes[0],            // Register 109 - y position
+        .adu[27] = displaydata.position[1].bytes[3],            // Register 110 - y position
+        .adu[28] = displaydata.position[1].bytes[2],            // Register 110 - y position
+
+        .adu[29] = displaydata.position[2].bytes[1],            // Register 111 - z position
+        .adu[30] = displaydata.position[2].bytes[0],            // Register 111 - z position
+        .adu[31] = displaydata.position[2].bytes[3],            // Register 112 - z position
+        .adu[32] = displaydata.position[2].bytes[2],            // Register 112 - z position
+
+        .tx_length = (2*PANEL_WRITEREG_COUNT) + 9,  // number of registers written, plus 7 header bytes, plus 2 checksum bytes
+        .rx_length = 8                              // fixed length ACK response?
+        // note: rx_length & tx_length must be less than or equal to MODBUS_MAX_ADU_SIZE
+    };
+
+    modbus_send(&write_cmd, &callbacks, block);
+}
+
+static void processDisplayData(panel_displaydata_t *displaydata)
+{
+    static uint32_t last_ms;
+    uint32_t ms = hal.get_elapsed_ticks();
+
+    // Don't spam the spindle, retrieving the spindle state may generate multiple new modbus requests
+    // (for instance Huanyang v1 uses seperate requests for RPM and Amps), which can saturate the
+    // Modbus RX buffer if spindle is offline...
+    //
+    // todo: can we set this a bit more intelligently, based on a multiple of the modbus rx timeout?
+    if (ms - last_ms > 250) {
+        last_ms = ms;
+
+        spindle_ptrs_t *spindle_0;
+        spindle_state_t spindle_0_state;
+
+        spindle_0 = spindle_get(0);
+        spindle_0_state = spindle_0->get_state();
+
+        if(!spindle_0->get_data) {
+            displaydata->spindle_speed = lroundf(spindle_0_state.on ? spindle_0->param->rpm_overridden : 0);
+        } else {
+            displaydata->spindle_speed = lroundf(spindle_0->get_data(SpindleData_RPM)->rpm);
+        }
+
+#if VFD_ENABLE
+        const vfd_ptrs_t *vfd_spindle = vfd_get_active();
+        if (vfd_spindle && vfd_spindle->get_load) {
+            displaydata->spindle_load = lroundf(vfd_spindle->get_load());
+        }
+#endif
+
+        displaydata->spindle_override = spindle_0->param->override_pct;
+    }
+
+    displaydata->wcs = gc_state.modal.coord_system.id;
+
+    displaydata->mpg_mode = mpg_axis;
+    displaydata->jog_mode = jog_mode;
+
+    displaydata->feed_override    = sys.override.feed_rate;
+    displaydata->rapid_override   = sys.override.rapid_rate;
 
     int32_t raw_position[N_AXIS];
     float   machine_position[N_AXIS];
-    float32_data_t offset_position[N_AXIS];
 
     memcpy(raw_position, sys.position, sizeof(sys.position));
     system_convert_array_steps_to_mpos(machine_position, raw_position);
@@ -128,61 +202,8 @@ static void WriteHoldingRegisters(bool block)
     for (uint_fast8_t idx = 0; idx < N_AXIS; idx++) {
         // Apply work coordinate offsets and tool length offset to current position.
         wco[idx] = gc_get_offset(idx);
-        offset_position[idx].value = machine_position[idx] - wco[idx];
+        displaydata->position[idx].value = machine_position[idx] - wco[idx];
     }
-
-    modbus_message_t write_cmd = {
-        .context = (void *)Panel_WriteHoldingRegisters,
-        .crc_check = true,
-        .adu[0] = PANEL_ADDRESS,
-        .adu[1] = ModBus_WriteRegisters,
-        .adu[2] = 0x00,                             // Start address - high byte
-        .adu[3] = PANEL_START_REF,                  // Start address - low byte - 100 (0x64)
-        .adu[4] = 0x00,                             // No of 16bit registers - high byte
-        .adu[5] = PANEL_WRITEREG_COUNT,             // No of 16bit registers - low byte
-        .adu[6] = PANEL_WRITEREG_COUNT*2,           // Number of bytes
-
-        .adu[7] = (grbl_state >> 8) & 0xFF,         // Register 100 - high byte
-        .adu[8] = grbl_state & 0xFF,                // Register 100 - low byte
-
-        .adu[11] = (spindle_rpm >> 8) & 0xFF,       // Register 102 - high byte
-        .adu[12] = spindle_rpm & 0xFF,              // Register 102 - low byte
-
-#if VFD_ENABLE
-        .adu[13] = (spindle_power >> 8) & 0xFF,     // Register 103 - high byte
-        .adu[14] = spindle_power & 0xFF,            // Register 103 - low byte
-#endif
-
-        .adu[15] = wcs,                             // Register 104 - high byte
-        .adu[16] = spindle_override,                // Register 104 - low byte
-
-        .adu[17] = rapid_override,                  // Register 105 - high byte
-        .adu[18] = feed_override,                   // Register 105 - low byte
-
-        .adu[19] = mpg_axis,                        // Register 106 - high byte
-        .adu[20] = jog_mode,                        // Register 106 - low byte
-
-        .adu[21] = offset_position[0].bytes[1],     // Register 107 - x position
-        .adu[22] = offset_position[0].bytes[0],     // Register 107 - x position
-        .adu[23] = offset_position[0].bytes[3],     // Register 108 - x position
-        .adu[24] = offset_position[0].bytes[2],     // Register 109 - x position
-
-        .adu[25] = offset_position[1].bytes[1],     // Register 109 - y position
-        .adu[26] = offset_position[1].bytes[0],     // Register 109 - y position
-        .adu[27] = offset_position[1].bytes[3],     // Register 110 - y position
-        .adu[28] = offset_position[1].bytes[2],     // Register 110 - y position
-
-        .adu[29] = offset_position[2].bytes[1],     // Register 111 - z position
-        .adu[30] = offset_position[2].bytes[0],     // Register 111 - z position
-        .adu[31] = offset_position[2].bytes[3],     // Register 112 - z position
-        .adu[32] = offset_position[2].bytes[2],     // Register 112 - z position
-
-        .tx_length = (2*PANEL_WRITEREG_COUNT) + 9,  // number of registers written, plus 7 header bytes, plus 2 checksum bytes
-        .rx_length = 8                              // fixed length ACK response?
-        // note: rx_length & tx_length must be less than or equal to MODBUS_MAX_ADU_SIZE
-    };
-
-    modbus_send(&write_cmd, &callbacks, block);
 }
 
 static void processKeypad(uint16_t keydata[])

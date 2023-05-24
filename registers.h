@@ -114,8 +114,4 @@ typedef union {
     };
 } panel_keydata_5_t;
 
-typedef union {
-    float   value;
-    uint8_t bytes[4];
-} float32_data_t;
 

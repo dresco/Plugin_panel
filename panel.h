@@ -108,6 +108,24 @@ typedef struct {
     panel_encoder_function_t function;
 } panel_encoder_data_t;
 
+typedef union {
+    float   value;
+    uint8_t bytes[4];
+} float32_data_t;
+
+typedef struct {
+    uint16_t       grbl_state;
+    uint16_t       spindle_speed;
+    uint16_t       spindle_load;
+    uint8_t        spindle_override;
+    uint8_t        feed_override;
+    uint8_t        rapid_override;
+    uint8_t        wcs;
+    uint8_t        mpg_mode;
+    uint8_t        jog_mode;
+    float32_data_t position[N_AXIS];
+} panel_displaydata_t;
+
 void panel_init ();
 
 #endif /* _PANEL_H_ */
