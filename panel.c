@@ -802,6 +802,10 @@ void panel_update (sys_state_t state)
     last_ms = ms;
 }
 
+static void cancel_jog (sys_state_t state)
+{
+}
+
 void panel_init()
 {
     if(modbus_enabled()) {
@@ -813,6 +817,8 @@ void panel_init()
 
         on_execute_realtime = grbl.on_execute_realtime;
         grbl.on_execute_realtime = panel_update;
+
+        grbl.on_jog_cancel = cancel_jog;
     }
 }
 #endif
