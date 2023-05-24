@@ -44,8 +44,10 @@ static settings_changed_ptr settings_changed;
 static on_report_options_ptr on_report_options;
 static on_execute_realtime_ptr on_execute_realtime;
 
+static void processKeypad(uint16_t[]);
+static void processEncoder(int);
+
 // Globals
-static bool init_ok = false;
 static uint16_t grbl_state;
 static uint8_t mpg_axis = 0;
 static panel_jog_mode_t jog_mode = jog_mode_x10;
@@ -493,7 +495,7 @@ static void processEncoderOverride(uint8_t encoder_index)
     }
 
     // don't do any overrides if not initialised, just store the initial reading
-    if (!init_ok) {
+    if (!encoder_data[encoder_index].init_ok) {
         encoder_data[encoder_index].last_raw_value = encoder_data[encoder_index].raw_value;
         return;
     }
@@ -578,7 +580,7 @@ static void processEncoderJog(uint8_t encoder_index, uint8_t jog_axis)
 
     // don't jog if not initialised - just store the initial reading (so we can't pick up a big jump on startup)
     // don't jog if in smooth mode - is meant for keypad jogging only (large distances requested, and cancelled on key release)
-    if (!init_ok || (jog_mode == jog_mode_smooth)) {
+    if (!encoder_data[encoder_index].init_ok || (jog_mode == jog_mode_smooth)) {
         encoder_data[encoder_index].last_raw_value = encoder_data[encoder_index].raw_value;
         return;
     }
@@ -622,39 +624,57 @@ static void processEncoderJog(uint8_t encoder_index, uint8_t jog_axis)
     }
 }
 
-static void processEncoders()
+static void processEncoder(int index)
 {
-    for (int i = 0; i < N_ENCODERS; i++) {
+    switch (encoder_data[index].function) {
+        case (jog_mpg):
+            processEncoderJog(index, mpg_axis);
+            break;
 
-        switch (encoder_data[i].function) {
-            case (jog_mpg):
-                processEncoderJog(i, mpg_axis);
-                break;
+        case (jog_x):
+            processEncoderJog(index, 0);
+            break;
 
-            case (jog_x):
-                processEncoderJog(i, 0);
-                break;
+        case (jog_y):
+            processEncoderJog(index, 1);
+            break;
 
-            case (jog_y):
-                processEncoderJog(i, 1);
-                break;
+        case (jog_z):
+            processEncoderJog(index, 2);
+            break;
 
-            case (jog_z):
-                processEncoderJog(i, 2);
-                break;
+        case (jog_a):
+            processEncoderJog(index, 3);
+            break;
 
-            case (feed_override):
-            case (spindle_override):
-            case (rapid_override):
-                processEncoderOverride(i);
-                break;
+        case (jog_b):
+            processEncoderJog(index, 4);
+            break;
 
-            default:
-                break;
+        case (jog_c):
+            processEncoderJog(index, 5);
+            break;
 
-        }
+        case (jog_u):
+            processEncoderJog(index, 6);
+            break;
+
+        case (jog_v):
+            processEncoderJog(index, 7);
+            break;
+
+        case (feed_override):
+        case (spindle_override):
+        case (rapid_override):
+            processEncoderOverride(index);
+            break;
+
+        default:
+            break;
 
     }
+    // after first pass through, have populated the initial encoder values..
+    encoder_data[index].init_ok = true;
 }
 
 static void rx_packet (modbus_message_t *msg)
@@ -677,10 +697,12 @@ static void rx_packet (modbus_message_t *msg)
                 keydata[3] = (msg->adu[21] << 8) | msg->adu[22];                    // Register 109
 
                 processKeypad(keydata);
-                processEncoders();
 
-                // after one pass through, have populated the startup encoder values etc..
-                init_ok = true;
+                for (int i = 0; i < N_ENCODERS; i++) {
+                    processEncoder(i);
+                    // after first pass through, have populated the initial encoder values..
+                    encoder_data[i].init_ok = true;
+                }
 
                 break;
 

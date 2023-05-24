@@ -94,10 +94,14 @@ typedef enum {
     jog_y            = 6,
     jog_z            = 7,
     jog_a            = 8,
-    jog_b            = 9
+    jog_b            = 9,
+    jog_c            = 10,
+    jog_u            = 11,
+    jog_v            = 12
 } panel_encoder_function_t;
 
 typedef struct {
+    uint8_t                  init_ok;
     uint8_t                  ticks_per_request;
     uint16_t                 raw_value;
     uint16_t                 last_raw_value;
