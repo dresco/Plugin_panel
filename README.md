@@ -7,7 +7,7 @@ This grblHAL plugin provides support for a hardware control panel, using either 
 ---
 Note: This plugin is under development - and is subject to change as the [reference control panel](https://github.com/dresco/grblPANEL) implementation is further developed.
 
-It offers support for up to 88 input keys, and up to 8 quadrature encoders. (Somewhat arbitrary, but based on current development hardware).
+It offers support for up to 88 input keys, and up to 4 quadrature encoders. (Somewhat arbitrary, but based on current development hardware).
 
 The current modbus register descriptions, along with the keypad bitfields, can be found in the docs folder. Note that not all inputs are handled as yet.
 

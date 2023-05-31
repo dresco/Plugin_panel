@@ -5,7 +5,7 @@
   Part of grblHAL
 
   Copyright (c) 2020-2021 Terje Io
-  Copyright (c) 2021 Jon Escombe
+  Copyright (c) 2021-2023 Jon Escombe
 
   Grbl is free software: you can redistribute it and/or modify
   it under the terms of the GNU General Public License as published by
@@ -48,7 +48,6 @@
 #error "This Control panel configuration requires the CAN bus plugin to be enabled!"
 #endif
 
-static settings_changed_ptr settings_changed;
 static on_report_options_ptr on_report_options;
 static on_execute_realtime_ptr on_execute_realtime;
 
@@ -69,6 +68,170 @@ static panel_encoder_data_t encoder_data[N_ENCODERS] = { 0 };
 
 static char sys_cmd_buffer[LINE_BUFFER_SIZE];
 
+/*
+ * Start of settings specific code
+ */
+
+static nvs_address_t nvs_address;
+static panel_settings_t panel_settings = { 0 };
+
+static const setting_group_detail_t panel_groups [] = {
+    { Group_Root, Group_Panel, "Control panel"}
+};
+
+static const char encoder_mode[] = "Unused,"
+                                   "Spindle override,"
+                                   "Feed override,"
+                                   "Rapid override,"
+                                   "MPG jog,"
+                                   "X jog,"
+                                   "Y jog,"
+                                   "Z jog,"
+#if N_AXIS > 3
+                                   "A jog,"
+#endif
+#if N_AXIS > 4
+                                   "B jog,"
+#endif
+#if N_AXIS > 5
+                                   "C jog,"
+#endif
+#if N_AXIS > 6
+                                   "U jog,"
+#endif
+#if N_AXIS > 7
+                                   "V jog"
+#endif
+                                        ;
+
+static const setting_detail_t panel_setting_detail[] = {
+    { Setting_Panel_ModbusAddress, Group_Panel, "Control panel ModBus address", NULL, Format_Int8, "##0", NULL, "255", Setting_NonCore, &panel_settings.modbus_address, NULL, NULL },
+
+    { Setting_Panel_UpdateInterval, Group_Panel, "Control panel update interval (ms)", NULL, Format_Int16, "###0", "25", "1000", Setting_NonCore, &panel_settings.update_interval, NULL , NULL },
+    { Setting_Panel_SpindleSpeed, Group_Panel, "Control panel spindle start speed", NULL, Format_Int16, "####0", "1000", "24000", Setting_NonCore, &panel_settings.spindle_speed, NULL , NULL },
+
+    { Setting_Panel_JogSpeed_x1, Group_Panel, "Control panel x1 jog speed", NULL, Format_Int16, "####0", "1", "10000", Setting_NonCore, &panel_settings.jog_speed_x1, NULL , NULL },
+    { Setting_Panel_JogSpeed_x10, Group_Panel, "Control panel x10 jog speed", NULL, Format_Int16, "####0", "1", "10000", Setting_NonCore, &panel_settings.jog_speed_x10, NULL , NULL },
+    { Setting_Panel_JogSpeed_x100, Group_Panel, "Control panel x100 jog speed", NULL, Format_Int16, "####0", "1", "10000", Setting_NonCore, &panel_settings.jog_speed_x100, NULL , NULL },
+    { Setting_Panel_JogSpeed_Keypad, Group_Panel, "Control panel keypad jog speed", NULL, Format_Int16, "####0", "1", "10000", Setting_NonCore, &panel_settings.jog_speed_keypad, NULL , NULL },
+
+    { Setting_Panel_JogDistance_x1, Group_Panel, "Control panel x1 jog distance", NULL, Format_Decimal, "###0", "0.001", "10", Setting_NonCore, &panel_settings.jog_distance_x1, NULL , NULL },
+    { Setting_Panel_JogDistance_x10, Group_Panel, "Control panel x10 jog distance", NULL, Format_Decimal, "###0", "0.001", "10", Setting_NonCore, &panel_settings.jog_distance_x10, NULL , NULL },
+    { Setting_Panel_JogDistance_x100, Group_Panel, "Control panel x100 jog distance", NULL, Format_Decimal, "###0", "0.001", "10", Setting_NonCore, &panel_settings.jog_distance_x100, NULL , NULL },
+    { Setting_Panel_JogDistance_Keypad, Group_Panel, "Control panel keypad jog distance", NULL, Format_Decimal, "###0", "0.001", "10", Setting_NonCore, &panel_settings.jog_distance_keypad, NULL , NULL },
+
+    { Setting_Panel_JogAccelRamp, Group_Panel, "Control panel keypad jog acceleration ramp", NULL, Format_Int8, "##0", "10", "100", Setting_NonCore, &panel_settings.jog_accel_ramp, NULL , NULL },
+
+    { Setting_Panel_Encoder0_Mode, Group_Panel, "Control panel encoder #0 mode", NULL, Format_RadioButtons, encoder_mode, NULL, NULL, Setting_NonCore, &panel_settings.encoder_mode[0], NULL, NULL },
+    { Setting_Panel_Encoder0_Cpd, Group_Panel, "Control panel encoder #0 counts per detent", NULL, Format_Int8,"#0", "1", "4", Setting_NonCore, &panel_settings.encoder_cpd[0], NULL, NULL },
+
+    { Setting_Panel_Encoder1_Mode, Group_Panel, "Control panel encoder #1 mode", NULL, Format_RadioButtons, encoder_mode, NULL, NULL, Setting_NonCore, &panel_settings.encoder_mode[1], NULL, NULL },
+    { Setting_Panel_Encoder1_Cpd, Group_Panel, "Control panel encoder #1 counts per detent", NULL, Format_Int8, "#0", "1", "4", Setting_NonCore, &panel_settings.encoder_cpd[1], NULL, NULL },
+
+    { Setting_Panel_Encoder2_Mode, Group_Panel, "Control panel encoder #2 mode", NULL, Format_RadioButtons, encoder_mode, NULL, NULL, Setting_NonCore, &panel_settings.encoder_mode[2], NULL, NULL },
+    { Setting_Panel_Encoder2_Cpd, Group_Panel, "Control panel encoder #2 counts per detent", NULL, Format_Int8, "#0", "1", "4", Setting_NonCore, &panel_settings.encoder_cpd[2], NULL, NULL },
+
+    { Setting_Panel_Encoder3_Mode, Group_Panel, "Control panel encoder #3 mode", NULL, Format_RadioButtons, encoder_mode, NULL, NULL, Setting_NonCore, &panel_settings.encoder_mode[3], NULL, NULL },
+    { Setting_Panel_Encoder3_Cpd, Group_Panel, "Control panel encoder #3 counts per detent", NULL, Format_Int8, "#0", "1", "4", Setting_NonCore, &panel_settings.encoder_cpd[3], NULL, NULL },
+};
+
+#ifndef NO_SETTINGS_DESCRIPTIONS
+static const setting_descr_t panel_settings_descr[] = {
+        { Setting_Panel_JogDistance_Keypad, "The distance requested when keypad jogging. "
+                                            "If a key is held down, a new jog request is repeated at each panel update interval." },
+        { Setting_Panel_JogSpeed_Keypad, "The speed requested when keypad jogging. "
+                                         "If a key is held down, a new jog request is repeated at each panel update interval." },
+        { Setting_Panel_JogAccelRamp, "If a key is held down, keypad jogging will accelerate to the requested speed over this number of panel updates.\\n"
+                                      "Note: for ModBus connections, the number of updates will be doubled, as inputs and outputs are interleaved." },
+        { Setting_Panel_Encoder0_Cpd, "Encoder counts per detent. Typically this would be 1, 2, or 4, and would be configured to match the physical detents on the encoder." },
+        { Setting_Panel_Encoder1_Cpd, "Encoder counts per detent. Typically this would be 1, 2, or 4, and would be configured to match the physical detents on the encoder." },
+        { Setting_Panel_Encoder2_Cpd, "Encoder counts per detent. Typically this would be 1, 2, or 4, and would be configured to match the physical detents on the encoder." },
+        { Setting_Panel_Encoder3_Cpd, "Encoder counts per detent. Typically this would be 1, 2, or 4, and would be configured to match the physical detents on the encoder." },
+};
+#endif
+
+// Restore default settings and write to non volatile storage (NVS).
+static void panel_settings_restore (void)
+{
+    //printf("panel_settings_restore()\n");
+
+    panel_settings.modbus_address      = PANEL_DEFAULT_MODBUS_ADDRESS;
+    panel_settings.update_interval     = PANEL_DEFAULT_UPDATE_INTERVAL;
+    panel_settings.spindle_speed       = PANEL_DEFAULT_SPINDLE_SPEED;
+
+    panel_settings.jog_speed_x1        = PANEL_DEFAULT_JOG_SPEED_X1;
+    panel_settings.jog_speed_x10       = PANEL_DEFAULT_JOG_SPEED_X10;
+    panel_settings.jog_speed_x100      = PANEL_DEFAULT_JOG_SPEED_X100;
+    panel_settings.jog_speed_keypad    = PANEL_DEFAULT_JOG_SPEED_KEYPAD;
+
+    panel_settings.jog_distance_x1     = PANEL_DEFAULT_JOG_DISTANCE_X1;
+    panel_settings.jog_distance_x10    = PANEL_DEFAULT_JOG_DISTANCE_X10;
+    panel_settings.jog_distance_x100   = PANEL_DEFAULT_JOG_DISTANCE_X100;
+    panel_settings.jog_distance_keypad = PANEL_DEFAULT_JOG_DISTANCE_KEYPAD;
+
+    panel_settings.jog_accel_ramp      = PANEL_DEFAULT_JOG_KEYPAD_RAMP;
+
+    panel_settings.encoder_mode[0] = jog_mpg;
+    panel_settings.encoder_cpd[0]  = 4;
+    panel_settings.encoder_mode[1] = rapid_override;
+    panel_settings.encoder_cpd[1]  = 4;
+    panel_settings.encoder_mode[2] = spindle_override;
+    panel_settings.encoder_cpd[2]  = 4;
+    panel_settings.encoder_mode[3] = feed_override;
+    panel_settings.encoder_cpd[3]  = 4;
+
+    hal.nvs.memcpy_to_nvs(nvs_address, (uint8_t *)&panel_settings, sizeof(panel_settings_t), true);
+}
+
+// Load our settings from non volatile storage (NVS).
+// If load fails restore to default values.
+static void panel_settings_load (void)
+{
+    //printf("panel_settings_load()\n");
+
+    if(hal.nvs.memcpy_from_nvs((uint8_t *)&panel_settings, nvs_address, sizeof(panel_settings_t), true) != NVS_TransferResult_OK) {
+        panel_settings_restore();
+    }
+}
+
+// Write settings to non volatile storage (NVS).
+static void panel_settings_save (void)
+{
+    //printf("panel_settings_save()\n");
+
+    hal.nvs.memcpy_to_nvs(nvs_address, (uint8_t *)&panel_settings, sizeof(panel_settings_t), true);
+}
+
+// Plugin settings have been changed.
+void on_settings_changed (settings_t *settings, settings_changed_flags_t changed)
+{
+    //printf("on_settings_changed()\n");
+
+    for (uint8_t i=0; i < N_ENCODERS; i++) {
+        encoder_data[i].mode = panel_settings.encoder_mode[i];
+        encoder_data[i].cpd = panel_settings.encoder_cpd[i];
+    }
+}
+
+static setting_details_t setting_details = {
+    .groups = panel_groups,
+    .n_groups = sizeof(panel_groups) / sizeof(setting_group_detail_t),
+    .settings = panel_setting_detail,
+    .n_settings = sizeof(panel_setting_detail) / sizeof(setting_detail_t),
+#ifndef NO_SETTINGS_DESCRIPTIONS
+    .descriptions = panel_settings_descr,
+    .n_descriptions = sizeof(panel_settings_descr) / sizeof(setting_descr_t),
+#endif
+    .save = panel_settings_save,
+    .load = panel_settings_load,
+    .restore = panel_settings_restore,
+    .on_changed = on_settings_changed
+};
+
+/*
+ * End of settings specific code
+ */
+
 #if PANEL_ENABLE == 1
 static void rx_modbus_packet (modbus_message_t *msg);
 static void rx_modbus_exception (uint8_t code, void *context);
@@ -83,16 +246,16 @@ static void ReadModbusInputRegisters(bool block)
     modbus_message_t read_cmd = {
         .context = (void *)Panel_ReadInputRegisters,
         .crc_check = true,
-        .adu[0] = PANEL_ADDRESS,
+        .adu[0] = panel_settings.modbus_address,
         .adu[1] = ModBus_ReadInputRegisters,
-        .adu[2] = 0x00,                          // Start address   - high byte
-        .adu[3] = PANEL_START_REF,               // Start address   - low byte - 100 (0x64)
-        .adu[4] = 0x00,                          // No of registers - high byte
-        .adu[5] = PANEL_READREG_COUNT,           // No of registers - low byte
-        .tx_length = 8,                          // number of registers, plus 2 checksum bytes
-        .rx_length = (2*PANEL_READREG_COUNT) + 5 // number of data registers requested,
-                                                 // plus 3 header bytes (address, function, length),
-                                                 // plus 2 checksum bytes
+        .adu[2] = 0x00,                                 // Start address   - high byte
+        .adu[3] = PANEL_MODBUS_START_REG,               // Start address   - low byte - 100 (0x64)
+        .adu[4] = 0x00,                                 // No of registers - high byte
+        .adu[5] = PANEL_MODBUS_READREG_COUNT,           // No of registers - low byte
+        .tx_length = 8,                                 // number of registers, plus 2 checksum bytes
+        .rx_length = (2*PANEL_MODBUS_READREG_COUNT) + 5 // number of data registers requested,
+                                                        // plus 3 header bytes (address, function, length),
+                                                        // plus 2 checksum bytes
          // note: rx_length & tx_length must be less than or equal to MODBUS_MAX_ADU_SIZE
     };
 
@@ -108,13 +271,13 @@ static void WriteModbusHoldingRegisters(bool block)
     modbus_message_t write_cmd = {
         .context = (void *)Panel_WriteHoldingRegisters,
         .crc_check = true,
-        .adu[0] = PANEL_ADDRESS,
+        .adu[0] = panel_settings.modbus_address,
         .adu[1] = ModBus_WriteRegisters,
         .adu[2] = 0x00,                                         // Start address - high byte
-        .adu[3] = PANEL_START_REF,                              // Start address - low byte - 100 (0x64)
+        .adu[3] = PANEL_MODBUS_START_REG,                       // Start address - low byte - 100 (0x64)
         .adu[4] = 0x00,                                         // No of 16bit registers - high byte
-        .adu[5] = PANEL_WRITEREG_COUNT,                         // No of 16bit registers - low byte
-        .adu[6] = PANEL_WRITEREG_COUNT*2,                       // Number of bytes
+        .adu[5] = PANEL_MODBUS_WRITEREG_COUNT,                  // No of 16bit registers - low byte
+        .adu[6] = PANEL_MODBUS_WRITEREG_COUNT*2,                // Number of bytes
 
         .adu[7] = (displaydata.grbl_state >> 8) & 0xFF,         // Register 100 - high byte
         .adu[8] = displaydata.grbl_state & 0xFF,                // Register 100 - low byte
@@ -151,8 +314,8 @@ static void WriteModbusHoldingRegisters(bool block)
         .adu[31] = displaydata.position[2].bytes[3],            // Register 112 - z position
         .adu[32] = displaydata.position[2].bytes[2],            // Register 112 - z position
 
-        .tx_length = (2*PANEL_WRITEREG_COUNT) + 9,  // number of registers written, plus 7 header bytes, plus 2 checksum bytes
-        .rx_length = 8                              // fixed length ACK response?
+        .tx_length = (2*PANEL_MODBUS_WRITEREG_COUNT) + 9,  // number of registers written, plus 7 header bytes, plus 2 checksum bytes
+        .rx_length = 8                                     // fixed length ACK response?
         // note: rx_length & tx_length must be less than or equal to MODBUS_MAX_ADU_SIZE
     };
 
@@ -209,7 +372,7 @@ static canbus_message_t tx_message;
 bool panel_dequeue_rx (canbus_message_t message)
 {
     // process inbound data here..
-    printf("panel_dequeue_rx(), CAN message id:%lx\n", message.id);
+    //printf("panel_dequeue_rx(), CAN message id:%lx\n", message.id);
 
     // fixme: don't try accessing array elements that may not be allocated, respect N_KEYDATAS / N_ENCODERS etc..
 
@@ -450,7 +613,7 @@ static void processKeypad(uint16_t keydata[])
     char command[30] = "";
     bool jogRequested = false;
     static bool jogInProgress;
-    static uint8_t jogAccelCount = JOG_SMOOTH_ACCEL;
+    static uint8_t jogRampCount;
     uint8_t keypad_jog_mode = jog_mode_smooth;
 
     panel_keydata_1_t keydata_1;
@@ -505,14 +668,19 @@ static void processKeypad(uint16_t keydata[])
             mpg_axis = 4;
 
         // spindle keys - only from idle state
-        // todo: add setting for requested speed
         if (grbl_state == STATE_IDLE) {
             if (keydata_1.spindle_off)
                 grbl.enqueue_gcode("M5");
-            if (keydata_1.spindle_cw)
-                grbl.enqueue_gcode("M3 S1000");
-            if (keydata_1.spindle_ccw)
-                grbl.enqueue_gcode("M4 S1000");
+            if (keydata_1.spindle_cw) {
+                strcat(command, "M3 S");
+                strcat(command, ftoa(panel_settings.spindle_speed, 0));
+                grbl.enqueue_gcode(command);
+            }
+            if (keydata_1.spindle_ccw) {
+                strcat(command, "M4 S");
+                strcat(command, ftoa(panel_settings.spindle_speed, 0));
+                grbl.enqueue_gcode(command);
+            }
         }
 
         // single block toggle - process only in IDLE or HOLD state
@@ -662,32 +830,35 @@ static void processKeypad(uint16_t keydata[])
             switch (keypad_jog_mode) {
 
                 case (jog_mode_x1):
-                    strcat(command, ftoa(JOG_DISTANCE_X1, 3));
+                    strcat(command, ftoa(panel_settings.jog_distance_x1, 3));
                     strcat(command, "F");
-                    strcat(command, ftoa(JOG_SPEED_X1, 0));
+                    strcat(command, ftoa(panel_settings.jog_speed_x1, 0));
                     break;
 
                 case (jog_mode_x10):
-                    strcat(command, ftoa(JOG_DISTANCE_X10, 3));
+                    strcat(command, ftoa(panel_settings.jog_distance_x10, 3));
                     strcat(command, "F");
-                    strcat(command, ftoa(JOG_SPEED_X10, 0));
+                    strcat(command, ftoa(panel_settings.jog_speed_x10, 0));
                     break;
 
                 case (jog_mode_x100):
-                    strcat(command, ftoa(JOG_DISTANCE_X100, 3));
+                    strcat(command, ftoa(panel_settings.jog_distance_x100, 3));
                     strcat(command, "F");
-                    strcat(command, ftoa(JOG_SPEED_X100, 0));
+                    strcat(command, ftoa(panel_settings.jog_speed_x100, 0));
                     break;
 
                 case (jog_mode_smooth):
                     // Initial attempt at acceleration ramp for smooth keypad jogging..
-                    if (jogAccelCount)
-                        jogAccelCount--;
-                    float jogAccel = (JOG_SMOOTH_ACCEL - jogAccelCount) / JOG_SMOOTH_ACCEL;
+                    if (!jogInProgress)
+                        jogRampCount = panel_settings.jog_accel_ramp;
+                    else if (jogRampCount)
+                        jogRampCount--;
 
-                    strcat(command, ftoa(JOG_DISTANCE_SMOOTH * jogAccel, 3));
+                    float jogAccel = (panel_settings.jog_accel_ramp - jogRampCount) / (float)panel_settings.jog_accel_ramp;
+
+                    strcat(command, ftoa(panel_settings.jog_distance_keypad * jogAccel, 3));
                     strcat(command, "F");
-                    strcat(command, ftoa(JOG_SPEED_SMOOTH * jogAccel, 0));
+                    strcat(command, ftoa(panel_settings.jog_speed_keypad * jogAccel, 0));
                     break;
 
                 default:
@@ -703,7 +874,7 @@ static void processKeypad(uint16_t keydata[])
         {
             grbl.enqueue_realtime_command(CMD_JOG_CANCEL);
             jogInProgress = false;
-            jogAccelCount = JOG_SMOOTH_ACCEL;
+            jogRampCount = panel_settings.jog_accel_ramp;
         }
 
         // set jogInProgress back to 0 at end of move in single-step
@@ -734,10 +905,10 @@ static void processKeypad(uint16_t keydata[])
 static void processEncoderOverride(uint8_t encoder_index)
 {
     int16_t signed_value;
-    uint16_t cmd_override_minus, cmd_override_plus;
+    uint16_t cmd_override_minus = 0, cmd_override_plus = 0;
     int8_t modulo;
 
-    switch (encoder_data[encoder_index].function) {
+    switch (encoder_data[encoder_index].mode) {
         case (spindle_override):
             cmd_override_minus = CMD_OVERRIDE_SPINDLE_FINE_MINUS;
             cmd_override_plus  = CMD_OVERRIDE_SPINDLE_FINE_PLUS;
@@ -757,11 +928,11 @@ static void processEncoderOverride(uint8_t encoder_index)
     }
 
     signed_value = encoder_data[encoder_index].raw_value - encoder_data[encoder_index].last_raw_value;
-    signed_value = signed_value / encoder_data[encoder_index].ticks_per_request;
+    signed_value = signed_value / encoder_data[encoder_index].cpd;
 
-    modulo = encoder_data[encoder_index].raw_value % encoder_data[encoder_index].ticks_per_request;
+    modulo = encoder_data[encoder_index].raw_value % encoder_data[encoder_index].cpd;
     if (modulo && signed_value < 0) {
-        modulo = (encoder_data[encoder_index].ticks_per_request - modulo) * -1;
+        modulo = (encoder_data[encoder_index].cpd - modulo) * -1;
     }
 
     // don't do any overrides if not initialised, just store the initial reading
@@ -772,7 +943,7 @@ static void processEncoderOverride(uint8_t encoder_index)
 
     if (signed_value) {
 
-        if (encoder_data[encoder_index].function == rapid_override) {
+        if (encoder_data[encoder_index].mode == rapid_override) {
 
             // rapid overrides are handled a bit differently, as only thee possible values..
             if (signed_value < 0) {
@@ -826,7 +997,7 @@ static void processEncoderOverride(uint8_t encoder_index)
             }
         }
 
-        // update last value, only if changed by a full 'ticks per request'
+        // update last value
         // note stored value is adjusted for partial ticks
         encoder_data[encoder_index].last_raw_value = encoder_data[encoder_index].raw_value - modulo;
     }
@@ -841,11 +1012,11 @@ static void processEncoderJog(uint8_t encoder_index, uint8_t jog_axis)
     int8_t modulo;
 
     signed_value = encoder_data[encoder_index].raw_value - encoder_data[encoder_index].last_raw_value;
-    signed_value = signed_value / encoder_data[encoder_index].ticks_per_request;
+    signed_value = signed_value / encoder_data[encoder_index].cpd;
 
-    modulo = encoder_data[encoder_index].raw_value % encoder_data[encoder_index].ticks_per_request;
+    modulo = encoder_data[encoder_index].raw_value % encoder_data[encoder_index].cpd;
     if (modulo && signed_value < 0) {
-        modulo = (encoder_data[encoder_index].ticks_per_request - modulo) * -1;
+        modulo = (encoder_data[encoder_index].cpd - modulo) * -1;
     }
 
     // don't jog if not initialised - just store the initial reading (so we can't pick up a big jump on startup)
@@ -862,21 +1033,21 @@ static void processEncoderJog(uint8_t encoder_index, uint8_t jog_axis)
         switch (jog_mode) {
 
             case (jog_mode_x1):
-                strcat(command, ftoa(signed_value * JOG_DISTANCE_X1, 3));
+                strcat(command, ftoa(signed_value * panel_settings.jog_distance_x1, 3));
                 strcat(command, "F");
-                strcat(command, ftoa(JOG_SPEED_X1, 0));
+                strcat(command, ftoa(panel_settings.jog_speed_x1, 0));
                 break;
 
             case (jog_mode_x10):
-                strcat(command, ftoa(signed_value * JOG_DISTANCE_X10, 3));
+                strcat(command, ftoa(signed_value * panel_settings.jog_distance_x10, 3));
                 strcat(command, "F");
-                strcat(command, ftoa(JOG_SPEED_X10, 0));
+                strcat(command, ftoa(panel_settings.jog_speed_x10, 0));
                 break;
 
             case (jog_mode_x100):
-                strcat(command, ftoa(signed_value * JOG_DISTANCE_X100, 3));
+                strcat(command, ftoa(signed_value * panel_settings.jog_distance_x100, 3));
                 strcat(command, "F");
-                strcat(command, ftoa(JOG_SPEED_X100, 0));
+                strcat(command, ftoa(panel_settings.jog_speed_x100, 0));
                 break;
 
             default:
@@ -886,7 +1057,7 @@ static void processEncoderJog(uint8_t encoder_index, uint8_t jog_axis)
 
         if (!plan_check_full_buffer()) {
             if (grbl.enqueue_gcode((char *)command)) {
-                // update last value, only if changed by a full 'ticks per request', and only if jog command was accepted
+                // update last value, and only if jog command was accepted
                 // note stored value is adjusted for partial ticks
                 encoder_data[encoder_index].last_raw_value = encoder_data[encoder_index].raw_value - modulo;
             }
@@ -896,7 +1067,7 @@ static void processEncoderJog(uint8_t encoder_index, uint8_t jog_axis)
 
 static void processEncoder(int index)
 {
-    switch (encoder_data[index].function) {
+    switch (encoder_data[index].mode) {
         case (jog_mpg):
             processEncoderJog(index, mpg_axis);
             break;
@@ -956,26 +1127,6 @@ static void onReportOptions (bool newopt)
     }
 }
 
-static void panel_settings_changed (settings_t *settings, settings_changed_flags_t changed)
-{
-    if(settings_changed)
-        settings_changed(settings, changed);
-
-    // todo: read settings from nvs, same for the #defines in panel.h
-
-    encoder_data[0].function = jog_mpg;
-    encoder_data[0].ticks_per_request = 4;
-
-    encoder_data[1].function = rapid_override;
-    encoder_data[1].ticks_per_request = 4;
-
-    encoder_data[2].function = spindle_override;
-    encoder_data[2].ticks_per_request = 4;
-
-    encoder_data[3].function = feed_override;
-    encoder_data[3].ticks_per_request = 4;
-}
-
 void ReadPanelInputs(void)
 {
 #if PANEL_ENABLE == 1
@@ -1022,7 +1173,7 @@ void panel_update (sys_state_t state)
     // what about overwriting values etc.. can we just process each message individually?
     //
     //
-    if (!(ms % PANEL_UPDATE_INTERVAL) )
+    if (!(ms % panel_settings.update_interval) )
     {
         if (!write)
             ReadPanelInputs();
@@ -1057,21 +1208,24 @@ static void cancel_jog (sys_state_t state)
 void panel_init()
 {
     if(plugins_enabled()) {
-        settings_changed = hal.settings_changed;
-        hal.settings_changed = panel_settings_changed;
+        if ((nvs_address = nvs_alloc(sizeof(panel_settings_t)))) {
 
-        on_report_options = grbl.on_report_options;
-        grbl.on_report_options = onReportOptions;
+            settings_register(&setting_details);
 
-        on_execute_realtime = grbl.on_execute_realtime;
-        grbl.on_execute_realtime = panel_update;
+            on_report_options = grbl.on_report_options;
+            grbl.on_report_options = onReportOptions;
 
-        grbl.on_jog_cancel = cancel_jog;
+            on_execute_realtime = grbl.on_execute_realtime;
+            grbl.on_execute_realtime = panel_update;
 
-#if PANEL_ENABLE == 2
-        dequeue_rx = canbus.dequeue_rx;
-        canbus.dequeue_rx = panel_dequeue_rx;
-#endif
+            grbl.on_jog_cancel = cancel_jog;
+
+    #if PANEL_ENABLE == 2
+            dequeue_rx = canbus.dequeue_rx;
+            canbus.dequeue_rx = panel_dequeue_rx;
+    #endif
+
+        }
     }
 }
 #endif

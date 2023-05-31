@@ -27,9 +27,13 @@
 
 #ifdef ARDUINO
 #include "../driver.h"
+#include "../grbl/nvs_buffer.h"
 #else
 #include "driver.h"
+#include "grbl/nvs_buffer.h"
 #endif
+
+#include <stdio.h>
 
 #ifdef CANBUS_ENABLE
 #include "canbus/canbus.h"
@@ -41,40 +45,36 @@
 #include "keypad_bitfields.h"
 #include "canbus_ids.h"
 
-#ifndef PANEL_UPDATE_INTERVAL
-#define PANEL_UPDATE_INTERVAL 50
-#endif
-
-#ifndef PANEL_ADDRESS
-#define PANEL_ADDRESS 0x0A
-#endif
-
-#ifndef PANEL_START_REF
-#define PANEL_START_REF 100
-#endif
-
-#ifndef PANEL_READREG_COUNT
-#define PANEL_READREG_COUNT 16
-#endif
-
-#ifndef PANEL_WRITEREG_COUNT
-#define PANEL_WRITEREG_COUNT 13
-#endif
-
 #define N_KEYDATAS 6
-#define N_ENCODERS 8
+#define N_ENCODERS 4
 
-#define JOG_DISTANCE_X1     0.01
-#define JOG_DISTANCE_X10    0.1
-#define JOG_DISTANCE_X100   1
-#define JOG_DISTANCE_SMOOTH 4
+#define PANEL_DEFAULT_UPDATE_INTERVAL     50         // Default update interval (ms)
+#define PANEL_DEFAULT_MODBUS_ADDRESS      0x0A       // Default modbus address
+#define PANEL_DEFAULT_SPINDLE_SPEED       1000       // Default spindle speed for cw/ccw buttons
 
-#define JOG_SPEED_X1        10
-#define JOG_SPEED_X10       100
-#define JOG_SPEED_X100      1000
-#define JOG_SPEED_SMOOTH    2000
+#define PANEL_DEFAULT_JOG_DISTANCE_X1     0.01
+#define PANEL_DEFAULT_JOG_DISTANCE_X10    0.1
+#define PANEL_DEFAULT_JOG_DISTANCE_X100   1
+#define PANEL_DEFAULT_JOG_DISTANCE_KEYPAD 4
 
-#define JOG_SMOOTH_ACCEL    20.0
+#define PANEL_DEFAULT_JOG_SPEED_X1        10
+#define PANEL_DEFAULT_JOG_SPEED_X10       100
+#define PANEL_DEFAULT_JOG_SPEED_X100      1000
+#define PANEL_DEFAULT_JOG_SPEED_KEYPAD    2000
+
+#define PANEL_DEFAULT_JOG_KEYPAD_RAMP     20
+
+#ifndef PANEL_MODBUS_START_REG
+#define PANEL_MODBUS_START_REG 100
+#endif
+
+#ifndef PANEL_MODBUS_READREG_COUNT
+#define PANEL_MODBUS_READREG_COUNT 16
+#endif
+
+#ifndef PANEL_MODBUS_WRITEREG_COUNT
+#define PANEL_MODBUS_WRITEREG_COUNT 13
+#endif
 
 typedef enum {
     Panel_Idle = 0,
@@ -103,14 +103,14 @@ typedef enum {
     jog_c            = 10,
     jog_u            = 11,
     jog_v            = 12
-} panel_encoder_function_t;
+} panel_encoder_mode_t;
 
 typedef struct {
-    uint8_t                  init_ok;
-    uint8_t                  ticks_per_request;
-    uint16_t                 raw_value;
-    uint16_t                 last_raw_value;
-    panel_encoder_function_t function;
+    uint8_t              init_ok;
+    uint8_t              cpd;
+    uint16_t             raw_value;
+    uint16_t             last_raw_value;
+    panel_encoder_mode_t mode;
 } panel_encoder_data_t;
 
 typedef union {
@@ -130,6 +130,28 @@ typedef struct {
     uint8_t        jog_mode;
     float32_data_t position[N_AXIS];
 } panel_displaydata_t;
+
+typedef struct {
+    uint8_t  modbus_address;
+    uint16_t update_interval;
+    uint16_t spindle_speed;
+
+    uint16_t jog_speed_x1;
+    uint16_t jog_speed_x10;
+    uint16_t jog_speed_x100;
+    uint16_t jog_speed_keypad;
+
+    float    jog_distance_x1;
+    float    jog_distance_x10;
+    float    jog_distance_x100;
+    float    jog_distance_keypad;
+
+    uint8_t  jog_accel_ramp;
+
+    uint8_t  encoder_mode[N_ENCODERS];
+    uint8_t  encoder_cpd[N_ENCODERS];
+} panel_settings_t;
+
 
 void panel_init ();
 
