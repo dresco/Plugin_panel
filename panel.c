@@ -4,7 +4,6 @@
 
   Part of grblHAL
 
-  Copyright (c) 2020-2021 Terje Io
   Copyright (c) 2021-2023 Jon Escombe
 
   Grbl is free software: you can redistribute it and/or modify
@@ -24,7 +23,7 @@
 
 #include "panel.h"
 
-#if PANEL_ENABLE
+#if PANEL_ENABLE == 1 || PANEL_ENABLE == 2
 
 #include <math.h>
 #include <string.h>
@@ -34,10 +33,14 @@
 #include "../grbl/hal.h"
 #include "../grbl/state_machine.h"
 #include "../grbl/report.h"
+#include "../grbl/nvs_buffer.h"
+#include "../grbl/protocol.h"
 #else
 #include "grbl/hal.h"
 #include "grbl/state_machine.h"
 #include "grbl/report.h"
+#include "grbl/nvs_buffer.h"
+#include "grbl/protocol.h"
 #endif
 
 #if PANEL_ENABLE == 1 && !(MODBUS_ENABLE)
