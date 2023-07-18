@@ -4,7 +4,6 @@
 
   Part of grblHAL
 
-  Copyright (c) 2020 Terje Io
   Copyright (c) 2021 Jon Escombe
 
   Grbl is free software: you can redistribute it and/or modify
@@ -27,11 +26,13 @@
 
 #ifdef ARDUINO
 #include "../driver.h"
-#include "../grbl/nvs_buffer.h"
+//#include "../grbl/nvs_buffer.h"
 #else
 #include "driver.h"
-#include "grbl/nvs_buffer.h"
+//#include "grbl/nvs_buffer.h"
 #endif
+
+#if PANEL_ENABLE == 1 || PANEL_ENABLE == 2
 
 #include <stdio.h>
 
@@ -39,8 +40,11 @@
 #include "canbus/canbus.h"
 #endif
 
+#if GRBL_BUILD >= 20230610
+#include "spindle/modbus_rtu.h"
+#else
 #include "spindle/modbus.h"
-#include "spindle/vfd/spindle.h"
+#endif
 
 #include "keypad_bitfields.h"
 #include "canbus_ids.h"
@@ -153,6 +157,6 @@ typedef struct {
 } panel_settings_t;
 
 
-void panel_init ();
+#endif /* PANEL_ENABLE == 1 || PANEL_ENABLE == 2 */
 
 #endif /* _PANEL_H_ */
