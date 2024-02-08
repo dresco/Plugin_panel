@@ -568,7 +568,7 @@ static void processDisplayData(panel_displaydata_t *displaydata)
         spindle_state_t spindle_0_state;
 
         spindle_0 = spindle_get(0);
-        spindle_0_state = spindle_0->get_state();
+        spindle_0_state = spindle_0->get_state(spindle_0);
 
         if(!spindle_0->get_data) {
             displaydata->spindle_speed = lroundf(spindle_0_state.on ? spindle_0->param->rpm_overridden : 0);
