@@ -35,20 +35,22 @@
 #include "../grbl/report.h"
 #include "../grbl/nvs_buffer.h"
 #include "../grbl/protocol.h"
+#include "../grbl/canbus.h"
 #else
 #include "grbl/hal.h"
 #include "grbl/state_machine.h"
 #include "grbl/report.h"
 #include "grbl/nvs_buffer.h"
 #include "grbl/protocol.h"
+#include "grbl/canbus.h"
 #endif
 
 #if PANEL_ENABLE == 1 && !(MODBUS_ENABLE)
 #error "This Control panel configuration requires the Modbus plugin to be enabled!"
 #endif
 
-#if PANEL_ENABLE == 2 && !(CANBUS_ENABLE)
-#error "This Control panel configuration requires the CAN bus plugin to be enabled!"
+#if PANEL_ENABLE == 2 && !defined(CAN_PORT)
+#error "This Control panel configuration requires CAN driver support!"
 #endif
 
 static on_report_options_ptr on_report_options;
@@ -369,10 +371,9 @@ static void rx_modbus_exception (uint8_t code, void *context)
 #endif // PANEL_ENABLE == 1
 
 #if PANEL_ENABLE == 2
-static dequeue_rx_ptr dequeue_rx;
 static canbus_message_t tx_message;
 
-bool panel_dequeue_rx (canbus_message_t message)
+static bool panel_dequeue_rx (canbus_message_t message)
 {
     // process inbound data here..
     //printf("panel_dequeue_rx(), CAN message id:%lx\n", message.id);
@@ -403,39 +404,35 @@ bool panel_dequeue_rx (canbus_message_t message)
             encoder_data[3].raw_value = (message.data[6] << 8) | message.data[7];
 
             for (int i = 0; i < 4; i++) {
-                if (encoder_data[i].function != unused) {
-                    processEncoder(i);
-                }
+                processEncoder(i);
+                // after first pass through, have populated the initial encoder values..
+                encoder_data[i].init_ok = true;
             }
             break;
 
-        case CANBUS_PANEL_ENCODER_2:
-            encoder_data[4].raw_value = (message.data[0] << 8) | message.data[1];
-            encoder_data[5].raw_value = (message.data[2] << 8) | message.data[3];
-            encoder_data[6].raw_value = (message.data[4] << 8) | message.data[5];
-            encoder_data[7].raw_value = (message.data[6] << 8) | message.data[7];
-
-            for (int i = 4; i < 8; i++) {
-                if (encoder_data[i].function != unused) {
-                    processEncoder(i);
-                }
-            }
-            break;
+        // case CANBUS_PANEL_ENCODER_2:
+        //     encoder_data[4].raw_value = (message.data[0] << 8) | message.data[1];
+        //     encoder_data[5].raw_value = (message.data[2] << 8) | message.data[3];
+        //     encoder_data[6].raw_value = (message.data[4] << 8) | message.data[5];
+        //     encoder_data[7].raw_value = (message.data[6] << 8) | message.data[7];
+        //
+        //     for (int i = 4; i < 8; i++) {
+        //         processEncoder(i);
+        //         // after first pass through, have populated the initial encoder values..
+        //         encoder_data[i].init_ok = true;
+        //     }
+        //     break;
 
         default:
             break;
     }
 
-    /* Call the next rx handler in the chain */
-    if (dequeue_rx)
-        dequeue_rx(message);
-
-    return(0);
+    return(1);
 }
 
 void WriteCANbusOutputs()
 {
-    panel_displaydata_t displaydata;
+    static panel_displaydata_t displaydata;
 
     processDisplayData(&displaydata);
 
@@ -451,7 +448,7 @@ void WriteCANbusOutputs()
     tx_message.data[5] = displaydata.spindle_speed & 0xFF;         // low byte
     tx_message.data[6] = (displaydata.spindle_load >> 8) & 0xFF;   // high byte
     tx_message.data[7] = displaydata.spindle_load & 0xFF;          // low byte
-    canbus_queue_tx(tx_message);
+    canbus_queue_tx(tx_message, false);
 
     memset(&tx_message, 0, sizeof(tx_message));
     tx_message.id = CANBUS_PANEL_STATE_2;
@@ -462,7 +459,7 @@ void WriteCANbusOutputs()
     tx_message.data[3] = displaydata.wcs;
     tx_message.data[4] = displaydata.mpg_mode;
     tx_message.data[5] = displaydata.jog_mode;
-    canbus_queue_tx(tx_message);
+    canbus_queue_tx(tx_message, false);
 
     // Machine position - up to 8 axis supported
     memset(&tx_message, 0, sizeof(tx_message));
@@ -476,7 +473,7 @@ void WriteCANbusOutputs()
     tx_message.data[5] = (displaydata.position[1].bytes[0]);
     tx_message.data[6] = (displaydata.position[1].bytes[3]);
     tx_message.data[7] = (displaydata.position[1].bytes[2]);
-    canbus_queue_tx(tx_message);
+    canbus_queue_tx(tx_message, false);
 
     memset(&tx_message, 0, sizeof(tx_message));
     tx_message.id = CANBUS_PANEL_MPOS_2;
@@ -492,7 +489,7 @@ void WriteCANbusOutputs()
     tx_message.data[6] = (displaydata.position[3].bytes[3]);
     tx_message.data[7] = (displaydata.position[3].bytes[2]);
 #endif
-    canbus_queue_tx(tx_message);
+    canbus_queue_tx(tx_message, false);
 
 #if N_AXIS > 4
     memset(&tx_message, 0, sizeof(tx_message));
@@ -509,7 +506,7 @@ void WriteCANbusOutputs()
     tx_message.data[6] = (displaydata.position[5].bytes[3]);
     tx_message.data[7] = (displaydata.position[5].bytes[2]);
 #endif
-    canbus_queue_tx(tx_message);
+    canbus_queue_tx(tx_message, false);
 #endif
 
 #if N_AXIS > 4
@@ -527,7 +524,7 @@ void WriteCANbusOutputs()
     tx_message.data[6] = (displaydata.position[5].bytes[3]);
     tx_message.data[7] = (displaydata.position[5].bytes[2]);
 #endif
-    canbus_queue_tx(tx_message);
+    canbus_queue_tx(tx_message, false);
 #endif
 
 #if N_AXIS > 6
@@ -545,9 +542,15 @@ void WriteCANbusOutputs()
     tx_message.data[6] = (displaydata.position[7].bytes[3]);
     tx_message.data[7] = (displaydata.position[7].bytes[2]);
 #endif
-    canbus_queue_tx(tx_message);
+    canbus_queue_tx(tx_message, false);
 #endif
+}
 
+void panel_canbus_config (void *data)
+{
+    if(canbus_enabled()) {
+        canbus_add_filter(0,  0, false, panel_dequeue_rx); // Single RX callback for all message id's
+    }
 }
 #endif // PANEL_ENABLE == 2
 
@@ -1126,7 +1129,7 @@ static void onReportOptions (bool newopt)
     on_report_options(newopt);
 
     if(!newopt) {
-        hal.stream.write("[PLUGIN:PANEL v0.02]" ASCII_EOL);
+        hal.stream.write("[PLUGIN:PANEL v0.03]" ASCII_EOL);
     }
 }
 
@@ -1137,7 +1140,7 @@ void ReadPanelInputs(void)
 #endif
 
 #if PANEL_ENABLE == 2
-    // Process inputs from CAN bus plugin
+    // CAN data is pushed to callback, no need to poll
 #endif
 }
 
@@ -1148,7 +1151,6 @@ void WritePanelOutputs(void)
 #endif
 
 #if PANEL_ENABLE == 2
-    // Send outputs to CAN bus plugin
     WriteCANbusOutputs();
 #endif
 }
@@ -1193,12 +1195,14 @@ int plugins_enabled(void)
 {
     int res = false;
 
-#if MODBUS_ENABLE
+#if PANEL_ENABLE == 1
     res = modbus_enabled();
 #endif
 
-#if CANBUS_ENABLE
-    res = canbus_enabled();
+#if PANEL_ENABLE == 2
+    // fixme: returns false if called this early...
+    //res = canbus_enabled();
+    res = true;
 #endif
 
     return res;
@@ -1210,6 +1214,11 @@ static void cancel_jog (sys_state_t state)
 
 void panel_init()
 {
+#if PANEL_ENABLE == 2
+    canbus_init();
+    task_add_immediate(panel_canbus_config, NULL);
+#endif
+
     if(plugins_enabled()) {
         if ((nvs_address = nvs_alloc(sizeof(panel_settings_t)))) {
 
@@ -1222,12 +1231,6 @@ void panel_init()
             grbl.on_execute_realtime = panel_update;
 
             grbl.on_jog_cancel = cancel_jog;
-
-    #if PANEL_ENABLE == 2
-            dequeue_rx = canbus.dequeue_rx;
-            canbus.dequeue_rx = panel_dequeue_rx;
-    #endif
-
         }
     }
 }

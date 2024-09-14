@@ -36,10 +36,6 @@
 
 #include <stdio.h>
 
-#ifdef CANBUS_ENABLE
-#include "canbus/canbus.h"
-#endif
-
 #if GRBL_BUILD >= 20230610
 #include "spindle/modbus_rtu.h"
 #else
