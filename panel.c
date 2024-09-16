@@ -120,10 +120,10 @@ static const setting_detail_t panel_setting_detail[] = {
     { Setting_Panel_JogSpeed_x100, Group_Panel, "Control panel x100 jog speed", NULL, Format_Int16, "####0", "1", "10000", Setting_NonCore, &panel_settings.jog_speed_x100, NULL , NULL },
     { Setting_Panel_JogSpeed_Keypad, Group_Panel, "Control panel keypad jog speed", NULL, Format_Int16, "####0", "1", "10000", Setting_NonCore, &panel_settings.jog_speed_keypad, NULL , NULL },
 
-    { Setting_Panel_JogDistance_x1, Group_Panel, "Control panel x1 jog distance", NULL, Format_Decimal, "###0", "0.001", "10", Setting_NonCore, &panel_settings.jog_distance_x1, NULL , NULL },
-    { Setting_Panel_JogDistance_x10, Group_Panel, "Control panel x10 jog distance", NULL, Format_Decimal, "###0", "0.001", "10", Setting_NonCore, &panel_settings.jog_distance_x10, NULL , NULL },
-    { Setting_Panel_JogDistance_x100, Group_Panel, "Control panel x100 jog distance", NULL, Format_Decimal, "###0", "0.001", "10", Setting_NonCore, &panel_settings.jog_distance_x100, NULL , NULL },
-    { Setting_Panel_JogDistance_Keypad, Group_Panel, "Control panel keypad jog distance", NULL, Format_Decimal, "###0", "0.001", "10", Setting_NonCore, &panel_settings.jog_distance_keypad, NULL , NULL },
+    { Setting_Panel_JogDistance_x1, Group_Panel, "Control panel x1 jog distance", NULL, Format_Decimal, "###0.000", "0.001", "10", Setting_NonCore, &panel_settings.jog_distance_x1, NULL , NULL },
+    { Setting_Panel_JogDistance_x10, Group_Panel, "Control panel x10 jog distance", NULL, Format_Decimal, "###0.000", "0.001", "10", Setting_NonCore, &panel_settings.jog_distance_x10, NULL , NULL },
+    { Setting_Panel_JogDistance_x100, Group_Panel, "Control panel x100 jog distance", NULL, Format_Decimal, "###0.000", "0.001", "10", Setting_NonCore, &panel_settings.jog_distance_x100, NULL , NULL },
+    { Setting_Panel_JogDistance_Keypad, Group_Panel, "Control panel keypad jog distance", NULL, Format_Decimal, "###0.000", "0.001", "10", Setting_NonCore, &panel_settings.jog_distance_keypad, NULL , NULL },
 
     { Setting_Panel_JogAccelRamp, Group_Panel, "Control panel keypad jog acceleration ramp", NULL, Format_Int8, "##0", "10", "100", Setting_NonCore, &panel_settings.jog_accel_ramp, NULL , NULL },
 
@@ -642,7 +642,7 @@ static void processKeypad(uint16_t keydata[])
     // - key repeats not required
     // - cycle start/feed hold/stop/reset can be executed in any state
     // - unlock only in locked state
-    // - home only in idle state
+    // - home in idle or alarm state
     // - spindle control only in idle state
     // - single block toggle in idle/hold?
     //
@@ -693,7 +693,7 @@ static void processKeypad(uint16_t keydata[])
         // todo: think a bit more about what states this should be allowed in?
         //       need to reflect the current state on the display..
         if (keydata_1.single_block) {
-            if (grbl_state == STATE_IDLE || (grbl_state & STATE_HOLD))
+            if ((grbl_state == STATE_IDLE) || (grbl_state & STATE_HOLD))
                 grbl.enqueue_gcode("$S");
         }
 
@@ -706,9 +706,9 @@ static void processKeypad(uint16_t keydata[])
             }
         }
 
-        // home - only from idle state
+        // home - only from idle or alarm states, alarm state needed for 'homing on startup required'
         if (keydata_1.home) {
-            if (grbl_state == STATE_IDLE) {
+            if ((grbl_state == STATE_IDLE) || (grbl_state == STATE_ALARM)){
                 strcpy(command, "$H");
                 grbl.enqueue_gcode((char *)command);
             }

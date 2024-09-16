@@ -26,10 +26,8 @@
 
 #ifdef ARDUINO
 #include "../driver.h"
-//#include "../grbl/nvs_buffer.h"
 #else
 #include "driver.h"
-//#include "grbl/nvs_buffer.h"
 #endif
 
 #if PANEL_ENABLE == 1 || PANEL_ENABLE == 2
