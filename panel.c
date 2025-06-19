@@ -36,6 +36,7 @@
 #include "../grbl/nvs_buffer.h"
 #include "../grbl/protocol.h"
 #include "../grbl/canbus.h"
+#include "../grbl/modbus.h"
 #else
 #include "grbl/hal.h"
 #include "grbl/state_machine.h"
@@ -43,6 +44,7 @@
 #include "grbl/nvs_buffer.h"
 #include "grbl/protocol.h"
 #include "grbl/canbus.h"
+#include "grbl/modbus.h"
 #endif
 
 #if PANEL_ENABLE == 1 && !(MODBUS_ENABLE)

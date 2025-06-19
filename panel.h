@@ -34,12 +34,6 @@
 
 #include <stdio.h>
 
-#if GRBL_BUILD >= 20230610
-#include "spindle/modbus_rtu.h"
-#else
-#include "spindle/modbus.h"
-#endif
-
 #if VFD_ENABLE
 #include "spindle/vfd/spindle.h"
 #endif
