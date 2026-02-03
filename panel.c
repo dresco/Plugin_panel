@@ -593,7 +593,7 @@ static void processDisplayData(panel_displaydata_t *displaydata)
 
     displaydata->grbl_state = grbl_state;
 
-    displaydata->wcs = gc_state.modal.coord_system.id;
+    displaydata->wcs = gc_state.modal.g5x_offset.id;
 
     displaydata->mpg_mode = mpg_axis;
     displaydata->jog_mode = jog_mode;
@@ -729,7 +729,7 @@ static void processKeypad(uint16_t keydata[])
         if (grbl_state == STATE_IDLE) {
 
             // need to know the current WCS in order to set
-            uint8_t wcs = gc_state.modal.coord_system.id;
+            uint8_t wcs = gc_state.modal.g5x_offset.id;
 
             if (keydata_2.wcs_g54)
                 grbl.enqueue_gcode("G54");
