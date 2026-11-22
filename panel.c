@@ -210,9 +210,9 @@ static void panel_settings_save (void)
 }
 
 // Plugin settings have been changed.
-void on_settings_changed (settings_t *settings, settings_changed_flags_t changed)
+void panel_settings_changed (settings_t *settings, settings_changed_flags_t changed)
 {
-    //printf("on_settings_changed()\n");
+    //printf("panel_settings_changed()\n");
 
     for (uint8_t i=0; i < N_ENCODERS; i++) {
         encoder_data[i].mode = panel_settings.encoder_mode[i];
@@ -232,7 +232,7 @@ static setting_details_t setting_details = {
     .save = panel_settings_save,
     .load = panel_settings_load,
     .restore = panel_settings_restore,
-    .on_changed = on_settings_changed
+    .on_changed = panel_settings_changed
 };
 
 /*
@@ -704,7 +704,7 @@ static void processKeypad(uint16_t keydata[])
         if (keydata_1.unlock) {
             if (grbl_state == STATE_ALARM) {
                 strcpy(sys_cmd_buffer, "$X");
-                system_execute_line((char *)sys_cmd_buffer);
+                system_execute_line((char *)sys_cmd_buffer, hal.stream.write);
             }
         }
 
